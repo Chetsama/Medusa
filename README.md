@@ -1,5 +1,23 @@
 <h1>Swarm</h1>
 
+Project Structure
+```
+  ai-dev-cloud/
+  ├─ docker-compose.yml
+  ├─ gateway/
+  │   └─ fastapi_router.py
+  ├─ agents/
+  │   ├─ planner.py
+  │   ├─ executor.py
+  │   └─ critic.py
+  ├─ rag/
+  │   └─ retriever.py
+  ├─ tools/
+  │   ├─ shell.py
+  │   ├─ filesystem.py
+  │   └─ git.py
+  └─ models/
+```
 
 Ran into permissions issue with docker
 
