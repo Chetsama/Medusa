@@ -1,5 +1,10 @@
 <h1>Swarm</h1>
 
+Currently, 
+-The request is sent to http://localhost:9000/v1 in Zed (appending /chat/completions)
+-This hits the fastapi router which reaches out to http://vllm:8000
+-Tool calls are baked in to vLLM
+
 Initial Design
 ```
 
@@ -28,7 +33,7 @@ Initial Design
 
 Project Structure
 ```
-  ai-dev-cloud/
+  swarm/
   ├─ docker-compose.yml
   ├─ gateway/
   │   └─ fastapi_router.py
