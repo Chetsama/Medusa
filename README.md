@@ -5,6 +5,13 @@ Currently,
 -This hits the fastapi router which reaches out to http://vllm:8000
 -Tool calls are baked in to vLLM
 
+We are yet to implement...
+[issue-002] Model Optimisations
+[issue-003] Formal Tool Calling
+[issue-004] LangGraph
+[issue-005] Multi Agents
+found in issues.md
+
 Initial Design
 ```
 

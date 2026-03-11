@@ -58,7 +58,7 @@ When I try and change yield chunk to, yield b"data: " + chunk + b"\n\n"
 Can you attempt to remedy this problem as simply as possible without refactoring the router.
 
 
-[issue-002]
+[issue-002] Model Optimisations
 
 Investigation into model length impact on performance, as well as these params
 --chunked-prefill
@@ -66,14 +66,14 @@ Investigation into model length impact on performance, as well as these params
 --dtype float16
 --use-cuda-graph
 
-[issue-003]
+[issue-003] Formal Tool Calling
 Can't write_file
 My model seems to be unable to perform the write_file tool call, I'm not sure if it's using the tools from the tool folder.
 
-[issue-004]
+[issue-004] LangGraph
 Implement LangGraph
 
-[issue-005]
+[issue-005] Multi Agents
 multiple agents
 -critic
 -planner
