@@ -13,16 +13,18 @@ def root():
 
 @app.api_route("/v1/{path:path}", methods=["GET", "POST"])
 async def proxy(path: str, request: Request):
-
     url = f"{VLLM_URL}/v1/{path}"
     body = await request.body()
+    method = request.method
+    headers = {
+        k: v for k, v in request.headers.items()
+        if k.lower() not in ["host", "content-length"]
+    }
 
-    # Handle Zed/vLLM compatibility
-    if request.method == "POST":
+    if method == "POST":
         try:
             data = json.loads(body)
-
-            # Flatten structured content [ {"type": "text", "text": "..."} ]
+            # Flatten structured content for vLLM compatibility if needed
             if "messages" in data:
                 for msg in data["messages"]:
                     if isinstance(msg.get("content"), list):
@@ -30,30 +32,64 @@ async def proxy(path: str, request: Request):
                             c.get("text", "") for c in msg["content"]
                             if isinstance(c, dict) and c.get("type") == "text"
                         ])
-
-            # Zed sends tools by default; strip them to avoid vLLM requirement errors
-            data.pop("tool_choice", None)
-            data.pop("tools", None)
-
+            
+            # Keep tools and tool_choice as they are now supported by vLLM flags
+            # (Previously we were popping them)
+            
             body = json.dumps(data).encode()
         except (json.JSONDecodeError, KeyError, TypeError):
             pass
 
     async def stream_response():
         async with httpx.AsyncClient(timeout=None) as client:
-            async with client.stream(
-                request.method,
-                url,
-                content=body,
-                headers={
-                    k: v for k, v in request.headers.items()
-                    if k.lower() not in ["host", "content-length"]
-                },
-            ) as r:
-                async for chunk in r.aiter_raw():
-                    yield chunk
+            try:
+                async with client.stream(method, url, content=body, headers=headers) as r:
+                    if r.status_code != 200:
+                        error_content = await r.aread()
+                        yield error_content
+                        return
 
-    return StreamingResponse(
-        stream_response(),
-        media_type="text/event-stream"
-    )
+                    in_think = False
+                    async for chunk in r.aiter_bytes():
+                        # Simple filtering for <think> blocks in SSE stream
+                        # This is a bit naive for multi-chunk blocks but helps for the reported issue
+                        if b"<think>" in chunk:
+                            in_think = True
+                            # If it also contains </think>, we might be able to strip just that part
+                            if b"</think>" in chunk:
+                                parts = chunk.split(b"<think>", 1)
+                                prefix = parts[0]
+                                remainder = parts[1].split(b"</think>", 1)
+                                suffix = remainder[1] if len(remainder) > 1 else b""
+                                chunk = prefix + suffix
+                                in_think = False
+                            else:
+                                chunk = chunk.split(b"<think>", 1)[0]
+                        elif b"</think>" in chunk:
+                            in_think = False
+                            chunk = chunk.split(b"</think>", 1)[1]
+                        elif in_think:
+                            continue
+                        
+                        if chunk and not in_think:
+                            yield chunk
+            except Exception as e:
+                yield json.dumps({"error": str(e)}).encode()
+
+    # If it's a chat completion with stream=true, use StreamingResponse
+    # Otherwise, just return the response directly
+    is_stream = False
+    try:
+        if method == "POST":
+            data = json.loads(body)
+            is_stream = data.get("stream", False)
+    except:
+        pass
+
+    if is_stream:
+        return StreamingResponse(stream_response(), media_type="text/event-stream")
+    else:
+        async with httpx.AsyncClient(timeout=None) as client:
+            r = await client.request(method, url, content=body, headers=headers)
+            from fastapi import Response
+            return Response(content=r.content, status_code=r.status_code, media_type=r.headers.get("content-type"))
