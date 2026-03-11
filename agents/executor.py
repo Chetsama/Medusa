@@ -2,34 +2,37 @@ from tools import filesystem, shell, git
 import json
 import shlex
 
+import re
+
 async def execute(step):
     """
     Executes a given step string or structured tool call.
     Currently handles simple string parsing for compatibility.
     """
-    step_lower = step.lower()
+    step_lower = step.lower().strip()
     
     try:
-        if "list files" in step_lower:
-            # Extract path if possible, default to '.'
-            parts = step.split()
-            path = "." if len(parts) < 3 else parts[-1]
-            return {"result": filesystem.list_files(path)}
+        # Check for 'write file <path> <content>'
+        write_match = re.match(r'^write\s+file\s+([^\s]+)\s+(.*)', step, re.IGNORECASE | re.DOTALL)
+        if write_match:
+            filename = write_match.group(1)
+            content = write_match.group(2)
+            filesystem.write_file(filename, content)
+            return {"result": f"wrote to {filename}"}
 
-        if "read file" in step_lower:
-            # Extract filename, default to 'README.md'
-            parts = step.split()
-            filename = "README.md" if len(parts) < 3 else parts[-1]
+        # Check for 'read file <path>'
+        read_match = re.match(r'^read\s+file\s+(.*)', step, re.IGNORECASE)
+        if read_match:
+            filename = read_match.group(1).strip()
             return {"result": filesystem.read_file(filename)}
 
-        if "write file" in step_lower:
-            # Requires format like: write file <path> <content>
-            # This is hard to parse from string, but let's try a simple version
-            parts = step.split(maxsplit=2)
-            if len(parts) == 3:
-                filesystem.write_file(parts[1], parts[2])
-                return {"result": f"wrote to {parts[1]}"}
-            return {"error": "write file requires path and content"}
+        # Check for 'list files <path>'
+        list_match = re.match(r'^list\s+files\s+(.*)', step, re.IGNORECASE)
+        if list_match:
+            path = list_match.group(1).strip()
+            return {"result": filesystem.list_files(path)}
+        elif "list files" in step_lower:
+            return {"result": filesystem.list_files(".")}
 
         if "git status" in step_lower:
             return {"result": git.git_status()}
