@@ -1,23 +1,11 @@
 import httpx
+from tools.definitions import TOOL_DEFINITIONS
 
-LLM_ENDPOINT = "http://localhost:8000/v1/chat/completions"
+LLM_ENDPOINT = "http://localhost:9000/v1/chat/completions"
 
 SYSTEM_PROMPT = """
 You are a planning agent.
-Break user tasks into ordered actionable steps.
-Available commands:
-- list files <path>
-- read file <filename>
-- write file <filename> <content>
-- run <shell command>
-- git status
-- git diff
-
-Example:
-Task: "Create a hello world file and list the directory"
-Steps:
-1. write file hello.txt print("hello world")
-2. list files .
+Break user tasks into actionable steps by using the provided tools.
 """
 
 async def plan(task):
@@ -26,7 +14,9 @@ async def plan(task):
         "messages": [
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": task}
-        ]
+        ],
+        "tools": TOOL_DEFINITIONS,
+        "tool_choice": "auto"
     }
 
     async with httpx.AsyncClient() as client:
