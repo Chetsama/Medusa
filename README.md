@@ -57,6 +57,13 @@ Project Structure
   └─ models/
 ```
 
+Python Venv stuff
+```  
+  python3 -m venv .venv
+  source .venv/bin/activate
+  
+```
+
 Ran into permissions issue with docker
 
 ```

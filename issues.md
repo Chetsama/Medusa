@@ -78,3 +78,15 @@ multiple agents
 -critic
 -planner
 -executor
+
+
+In docker-compose.yml I'm trying to mount the tools folder
+
+- ./tools:/tools
+
+As I understand the routing right now happens like so, 
+-The request is sent to http://localhost:9000/v1 in Zed (appending /chat/completions)
+-This hits the fastapi router which reaches out to http://vllm:8000
+-Tool calls are baked in to vLLM
+
+I'm yet to implement multipl agents but I'd like to get the routing setup to enable this in the future. Can you change the current setup so that we route and ultimately use the executor for our single instance?
