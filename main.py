@@ -239,22 +239,20 @@ def main():
     print("   • Streaming responses")
     print("   • Model management")
     print("   • Advanced LLM features")
-print(f"   Plan: {result['plan'][:100]}...")
-print(f"   Critique: {result['critique'][:100]}...")
 
-# Show vLLM integration details
-if "vllm_context" in result and result["vllm_context"]:
-    print("\n📈 vLLM Integration Details:")
-    for key, value in result["vllm_context"].items():
-        print(f"   {key}: {value}")
+    # Show vLLM integration details
+    if "vllm_context" in result and result["vllm_context"]:
+        print("\n📈 vLLM Integration Details:")
+        for key, value in result["vllm_context"].items():
+            print(f"   {key}: {value}")
 
-print("\n" + "=" * 70)
-print("🎉 LangGraph System Implementation Complete")
-print("This demonstrates how the three agents work together:")
-print("1. Planner: Decomposes complex tasks into executable steps")
-print("2. Executor: Performs the actual operations using available tools")
-print("3. Critic: Evaluates and provides feedback on execution quality")
-print("=" * 70)
+    print("\n" + "=" * 70)
+    print("🎉 LangGraph System Implementation Complete")
+    print("This demonstrates how the three agents work together:")
+    print("1. Planner: Decomposes complex tasks into executable steps")
+    print("2. Executor: Performs the actual operations using available tools")
+    print("3. Critic: Evaluates and provides feedback on execution quality")
+    print("=" * 70)
 
 # FastAPI Application for enhanced routing
 app = FastAPI(title="Swarm vLLM Gateway", version="1.0.0")

@@ -17,6 +17,7 @@ import sys
 import os
 from typing import Dict, Any
 import logging
+import json
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -29,7 +30,7 @@ sys.path.insert(0, project_root)
 try:
     # Try importing LangGraph components
     from agents.langgraph_demo import create_langgraph_system, main
-    from fastapi import FastAPI, HTTPException
+    from fastapi import FastAPI, HTTPException, Request
     from fastapi.middleware.cors import CORSMiddleware
     import uvicorn
     from pydantic import BaseModel
@@ -39,7 +40,7 @@ try:
     from langgraph.graph import StateGraph, END
     from langchain_core.messages import HumanMessage
     from langchain_openai import ChatOpenAI
-    import json
+    import httpx
 
     HAS_LANGGRAPH = True
 except ImportError as e:
@@ -59,8 +60,12 @@ app.add_middleware(
     allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
-    allow_headers=["*"],
+    allow_headers=["*"]
 )
+
+# vLLM integration configuration
+VLLM_URL = "http://vllm:8000"
+VLLM_API_PREFIX = "/v1"
 
 class TaskRequest(BaseModel):
     task: str
@@ -78,7 +83,8 @@ async def root():
         "status": "healthy",
         "service": "LangGraph Service",
         "version": "1.0.0",
-        "description": "LangGraph implementation for Swarm Project"
+        "description": "LangGraph implementation for Swarm Project",
+        "integration": "LangGraph -> vLLM"
     }
 
 @app.get("/health")
@@ -91,6 +97,52 @@ async def health_check():
             "langgraph": HAS_LANGGRAPH,
         }
     }
+
+@app.post("/process")
+async def process_request(request: Request):
+    """
+    Main entry point for processing requests through LangGraph,
+    then forwarding to vLLM if needed.
+    """
+    try:
+        # Read the raw body to forward to vLLM
+        body = await request.body()
+
+        # Try to parse as JSON if it's a POST request
+        try:
+            data = json.loads(body) if body else {}
+        except json.JSONDecodeError:
+            data = {}
+
+        logger.info(f"Processing request through LangGraph: {data.get('messages', [])}")
+
+        # In a real implementation, this would involve:
+        # 1. Processing through LangGraph agents
+        # 2. Routing tool calls to vLLM when needed
+        # 3. Returning responses
+
+        # For now, let's simulate processing and forward to vLLM
+        # This would normally involve more complex LangGraph logic
+
+        # Forward to vLLM for actual processing
+        async with httpx.AsyncClient(timeout=None) as client:
+            # Forward the request to vLLM
+            vllm_url = f"{VLLM_URL}{VLLM_API_PREFIX}/chat/completions"
+            headers = {
+                k: v for k, v in request.headers.items()
+                if k.lower() not in ["host", "content-length", "connection", "keep-alive"]
+            }
+
+            response = await client.post(vllm_url, content=body, headers=headers)
+
+            # Return the vLLM response
+            return response.content, response.status_code, {
+                "content-type": response.headers.get("content-type", "application/json")
+            }
+
+    except Exception as e:
+        logger.error(f"Request processing failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/execute-task")
 async def execute_task(request: TaskRequest):

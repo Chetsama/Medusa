@@ -44,7 +44,8 @@ services:
     volumes:
       - ./gateway:/app
       - ./tools:/tools
-    command: bash -c "pip install fastapi uvicorn httpx && uvicorn fastapi_router:app --host 0.0.0.0 --port 9000"
+      - ./:/app
+    command: bash -c "pip install fastapi uvicorn httpx langgraph langchain-core langchain-openai && uvicorn gateway.fastapi_router:app --host 0.0.0.0 --port 9000"
     ports:
       - "9000:9000"
     depends_on:
@@ -59,7 +60,7 @@ services:
       - ./agents:/app/agents
       - ./tools:/app/tools
       - ./:/app
-    command: bash -c "pip install langgraph langchain-core langchain-openai && python /app/agents/langgraph_demo.py"
+    command: bash -c "pip install fastapi uvicorn httpx langgraph langchain-core langchain-openai && python /app/langgraph_service.py"
     ports:
       - "9001:9001"
     depends_on:
