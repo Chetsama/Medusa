@@ -41,6 +41,7 @@ services:
       context: .
       dockerfile: Dockerfile.langgraph
     container_name: langgraph
+    command: bash -c "pip install langgraph langchain-core langchain-openai fastapi && python /app/agents/langgraph_orchestrator.py"
     ports:
       - "9001:9001"
 
