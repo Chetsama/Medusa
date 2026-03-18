@@ -37,13 +37,10 @@ services:
     command: --model-id BAAI/bge-small-en-v1.5
 
   langgraph:
-    image: python:3.11
-    working_dir: /app
-    volumes:
-      - ./agents:/app/agents
-      - ./tools:/app/tools
-      - ./:/app
-    command: bash -c "pip install langgraph langchain-core langchain-openai fastapi && python /app/agents/langgraph_orchestrator.py"
+    build:
+      context: .
+      dockerfile: Dockerfile.langgraph
+    container_name: langgraph
     ports:
       - "9001:9001"
 
