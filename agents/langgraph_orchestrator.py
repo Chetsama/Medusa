@@ -5,16 +5,17 @@ import json
 
 app = FastAPI()
 
-# Route requests through LangGraph orchestrator instead of directly to vLLM
-LANGGRAPH_URL = "http://langgraph:9001"
+# LangGraph orchestrator service
+# This service will act as an agent orchestrator that forwards requests to vLLM
+VLLM_URL = "http://vllm:8000"
 
 @app.get("/")
 def root():
-    return {"status": "I'm ready to help papa"}
+    return {"status": "LangGraph orchestrator is ready"}
 
 @app.api_route("/v1/{path:path}", methods=["GET", "POST"])
 async def proxy(path: str, request: Request):
-    url = f"{LANGGRAPH_URL}/v1/{path}"
+    url = f"{VLLM_URL}/v1/{path}"
     body = await request.body()
     method = request.method
     headers = {
@@ -22,6 +23,7 @@ async def proxy(path: str, request: Request):
         if k.lower() not in ["host", "content-length"]
     }
 
+    # Prepare the request to forward to vLLM
     if method == "POST":
         try:
             data = json.loads(body)
@@ -41,6 +43,7 @@ async def proxy(path: str, request: Request):
         except (json.JSONDecodeError, KeyError, TypeError):
             pass
 
+    # Forward the request to vLLM
     async def stream_response():
         async with httpx.AsyncClient(timeout=None) as client:
             try:
@@ -52,23 +55,23 @@ async def proxy(path: str, request: Request):
 
                     in_think = False
                     async for chunk in r.aiter_bytes():
-                        # Simple filtering for [THINK] blocks in SSE stream
+                        # Simple filtering for <tool_call> blocks in SSE stream
                         # This is a bit naive for multi-chunk blocks but helps for the reported issue
-                        if b"[THINK]" in chunk:
+                        if b"<tool_call>" in chunk:
                             in_think = True
-                            # If it also contains [/THINK], we might be able to strip just that part
-                            if b"[/THINK]" in chunk:
-                                parts = chunk.split(b"[THINK]", 1)
+                            # If it also contains <tool_call>, we might be able to strip just that part
+                            if b"<tool_call>" in chunk:
+                                parts = chunk.split(b"<tool_call>", 1)
                                 prefix = parts[0]
-                                remainder = parts[1].split(b"[/THINK]", 1)
+                                remainder = parts[1].split(b"<tool_call>", 1)
                                 suffix = remainder[1] if len(remainder) > 1 else b""
                                 chunk = prefix + suffix
                                 in_think = False
                             else:
-                                chunk = chunk.split(b"[THINK]", 1)[0]
-                        elif b"[/THINK]" in chunk:
+                                chunk = chunk.split(b"<tool_call>", 1)[0]
+                        elif b"<tool_call>" in chunk:
                             in_think = False
-                            chunk = chunk.split(b"[/THINK]", 1)[1]
+                            chunk = chunk.split(b"<tool_call>", 1)[1]
                         elif in_think:
                             continue
 

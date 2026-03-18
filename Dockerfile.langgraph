@@ -1,0 +1,15 @@
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Install dependencies
+RUN pip install langchain langgraph fastapi uvicorn httpx
+
+# Copy the agents directory
+COPY ./agents /app/agents
+
+# Expose port for the LangGraph service
+EXPOSE 9001
+
+# Command to run the LangGraph service
+CMD ["uvicorn", "agents.langgraph_orchestrator:app", "--host", "0.0.0.0", "--port", "9001"]
