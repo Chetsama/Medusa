@@ -25,11 +25,12 @@ async def agent_streamer(messages: list) -> AsyncGenerator[str, None]:
     # Initial chunk
     yield f"data: {json.dumps({'id': thread_id, 'object': 'chat.completion.chunk', 'created': created_time, 'model': 'agent-orchestrator', 'choices': [{'index': 0, 'delta': {'role': 'assistant', 'content': ''}, 'finish_reason': None}]})}\n\n"
 
-    last_content = ""
+    last_thought = ""
+    last_state = None
     
     async for state in agent.astream({"messages": messages, "retries": 0}):
+        last_state = state
         # Determine current node or status
-        # In 'values' mode, we get the full state. We can use state logic to show progress.
         plan = state.get("plan", [])
         current_step = state.get("current_step", 0)
         
@@ -41,23 +42,26 @@ async def agent_streamer(messages: list) -> AsyncGenerator[str, None]:
         else:
             thought = "Reviewing final results..."
 
-        # Stream the thought
-        thought_chunk = f"<thought>{thought}</thought>\n"
-        yield f"data: {json.dumps({'id': thread_id, 'object': 'chat.completion.chunk', 'created': created_time, 'model': 'agent-orchestrator', 'choices': [{'index': 0, 'delta': {'content': thought_chunk}, 'finish_reason': None}]})}\n\n"
-        
-        # If we have a new message from the assistant that isn't just a tool call
-        if state["messages"]:
-            last_msg = state["messages"][-1]
-            if isinstance(last_msg, AIMessage) and last_msg.content:
-                # To avoid re-streaming the same content if astream emits multiple times for one node
-                # this is a simplification.
-                pass
+        # Stream the thought ONLY if it changed
+        if thought != last_thought:
+            thought_chunk = f"<thought>{thought}</thought>\n"
+            yield f"data: {json.dumps({'id': thread_id, 'object': 'chat.completion.chunk', 'created': created_time, 'model': 'agent-orchestrator', 'choices': [{'index': 0, 'delta': {'content': thought_chunk}, 'finish_reason': None}]})}\n\n"
+            last_thought = thought
 
-    # Final content
-    final_state = await agent.ainvoke({"messages": messages, "retries": 0})
-    final_content = final_state["messages"][-1].content
+    # Final content from the last state produced by astream
+    if last_state and last_state.get("messages"):
+        # The last message might be from the critic (PASS/RETRY)
+        # We want the last actual content message, but usually the last one is the response.
+        # If the last message is from the critic saying PASS, we might want the message before it
+        # or have the executor provide the final answer.
+        # Looking at OrchestratorAgent, the executor sets last_result.
+        
+        final_content = last_state.get("last_result", "")
+        if not final_content and last_state["messages"]:
+             final_content = last_state["messages"][-1].content
+        
+        yield f"data: {json.dumps({'id': thread_id, 'object': 'chat.completion.chunk', 'created': created_time, 'model': 'agent-orchestrator', 'choices': [{'index': 0, 'delta': {'content': final_content}, 'finish_reason': 'stop'}]})}\n\n"
     
-    yield f"data: {json.dumps({'id': thread_id, 'object': 'chat.completion.chunk', 'created': created_time, 'model': 'agent-orchestrator', 'choices': [{'index': 0, 'delta': {'content': final_content}, 'finish_reason': 'stop'}]})}\n\n"
     yield "data: [DONE]\n\n"
 
 @app.post("/v1/chat/completions")

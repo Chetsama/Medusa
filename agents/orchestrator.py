@@ -131,9 +131,15 @@ class OrchestratorAgent:
             )
         )
         response = self.model.invoke([prompt] + state["messages"])
+        
+        # Check if we should increment retries
+        retries = state.get("retries", 0)
+        if not response.content.startswith("PASS"):
+            retries += 1
+            
         return {
             "messages": [response],
-            "retries": state["retries"],
+            "retries": retries,
         }
 
     def _route_after_executor(self, state: AgentState) -> Literal["executor", "critic"]:
