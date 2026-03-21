@@ -96,14 +96,20 @@ I'm yet to implement multipl agents but I'd like to get the routing setup to ena
 Using the wrong model
 
 
-[issue-007] Going in circles
+[issue-007] Going in circles (DONE)
 Agents seem to be incapable of writing files, which also makes me wonder whether any of the other tool calls are working correctly
+      ROOT CAUSE - the langgraph orchestrator is "closed loop system" and it is ultimately challenging to propagate tool calling up to the zed agent/opencode. The way this was solved was by moving the api router onto the local machine
 
-[issue-008] <thought></thought>
+[issue-008] <thought></thought> (DONE-ish)
 It'd be nice to see which agents are actually working. At the moment I just get these messages saying that a thought is occuring. I would like to see which agent is currently working and what they are working on.
 
 [issue-009] Persistent State
 At the moment the agents forget everything between sessions, next step is to persist context to a db
 
-[issue-010] A real fucker
+[issue-010] A real fucker (DONE)
 Because swarm runs on a "VM", the langgraph agents act in a closed loop. This means that when they try to read and write files, they are trying to perform those actions directly to the repo.
+
+[issue-011] Hitting a wall
+Periodically hitting the context limit, impressively, it just keeps fucking going
+
+[issue-012] Make it easier to run elsewhere
