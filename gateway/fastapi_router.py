@@ -18,50 +18,62 @@ def root():
     return {"status": "Agentic Gateway is online"}
 
 async def agent_streamer(messages: list) -> AsyncGenerator[str, None]:
-    """Streams agent steps as SSE events with <thought> tags."""
+    """Streams agent steps as SSE events with a single consolidated <thought> tag."""
     thread_id = str(uuid.uuid4())
     created_time = int(time.time())
 
-    # Initial chunk
+    # Initial metadata chunk
     yield f"data: {json.dumps({'id': thread_id, 'object': 'chat.completion.chunk', 'created': created_time, 'model': 'agent-orchestrator', 'choices': [{'index': 0, 'delta': {'role': 'assistant', 'content': ''}, 'finish_reason': None}]})}\n\n"
+
+    # Open the thought block
+    yield f"data: {json.dumps({'id': thread_id, 'object': 'chat.completion.chunk', 'created': created_time, 'model': 'agent-orchestrator', 'choices': [{'index': 0, 'delta': {'content': '<thought>\n'}, 'finish_reason': None}]})}\n\n"
 
     last_thought = ""
     last_state = None
 
-    async for state in agent.astream({"messages": messages, "retries": 0}):
+    async for state in agent.astream({"messages": messages, "retries": 0, "active_node": "init"}):
         last_state = state
-        # Determine current node or status
+        active_node = state.get("active_node", "init")
         plan = state.get("plan", [])
         current_step = state.get("current_step", 0)
-        active_node = state.get("active_node", "agent")
 
         thought = ""
-        if not plan:
-            thought = f"[{active_node}] Thinking about a plan..."
-        elif current_step < len(plan):
-            thought = f"[{active_node}] Executing step {current_step + 1}/{len(plan)}: {plan[current_step]}"
-        else:
-            thought = f"[{active_node}] Reviewing final results..."
-
+        if active_node == "init":
+            thought = "○ Initializing agent..."
+        elif active_node == "planner":
+            thought = "○ [planner] Generating execution plan..."
+        elif active_node == "executor":
+            if plan:
+                # In our graph, current_step is incremented after the node finishes.
+                # So if we just finished a node, current_step-1 is what just happened.
+                step_idx = current_step - 1
+                if 0 <= step_idx < len(plan):
+                    thought = f"○ [executor] Step {step_idx + 1}/{len(plan)}: {plan[step_idx]}"
+                else:
+                    thought = f"○ [executor] Moving to next step..."
+            else:
+                thought = "○ [executor] Executing task..."
+        elif active_node == "critic":
+            last_msg = state["messages"][-1].content if state.get("messages") else ""
+            status = "PASS" if "PASS" in last_msg else "RETRY"
+            thought = f"○ [critic] Verification: {status}"
+        
         # Stream the thought ONLY if it changed
-        if thought != last_thought:
-            thought_chunk = f"<thought>{thought}</thought>\n"
-            yield f"data: {json.dumps({'id': thread_id, 'object': 'chat.completion.chunk', 'created': created_time, 'model': 'agent-orchestrator', 'choices': [{'index': 0, 'delta': {'content': thought_chunk}, 'finish_reason': None}]})}\n\n"
+        if thought and thought != last_thought:
+            yield f"data: {json.dumps({'id': thread_id, 'object': 'chat.completion.chunk', 'created': created_time, 'model': 'agent-orchestrator', 'choices': [{'index': 0, 'delta': {'content': f'{thought}\n'}, 'finish_reason': None}]})}\n\n"
             last_thought = thought
 
-    # Final content from the last state produced by astream
-    if last_state and last_state.get("messages"):
-        # The last message might be from the critic (PASS/RETRY)
-        # We want the last actual content message, but usually the last one is the response.
-        # If the last message is from the critic saying PASS, we might want the message before it
-        # or have the executor provide the final answer.
-        # Looking at OrchestratorAgent, the executor sets last_result.
+    # Close the thought block
+    yield f"data: {json.dumps({'id': thread_id, 'object': 'chat.completion.chunk', 'created': created_time, 'model': 'agent-orchestrator', 'choices': [{'index': 0, 'delta': {'content': '</thought>\n\n'}, 'finish_reason': None}]})}\n\n"
 
+    # Final content from the last state produced by astream
+    if last_state:
         final_content = last_state.get("last_result", "")
-        if not final_content and last_state["messages"]:
+        if not final_content and last_state.get("messages"):
              final_content = last_state["messages"][-1].content
 
-        yield f"data: {json.dumps({'id': thread_id, 'object': 'chat.completion.chunk', 'created': created_time, 'model': 'agent-orchestrator', 'choices': [{'index': 0, 'delta': {'content': final_content}, 'finish_reason': 'stop'}]})}\n\n"
+        if final_content:
+            yield f"data: {json.dumps({'id': thread_id, 'object': 'chat.completion.chunk', 'created': created_time, 'model': 'agent-orchestrator', 'choices': [{'index': 0, 'delta': {'content': final_content}, 'finish_reason': 'stop'}]})}\n\n"
 
     yield "data: [DONE]\n\n"
 

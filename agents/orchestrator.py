@@ -74,9 +74,14 @@ class OrchestratorAgent:
         for line in response.content.split("\n"):
             line = line.strip()
             if line:
-                if "." in line:
+                # Remove common list prefixes like "1. ", "- ", "* "
+                if line[0].isdigit() and "." in line[:4]:
                     line = line.split(".", 1)[1].strip()
-                steps.append(line)
+                elif line.startswith(("- ", "* ")):
+                    line = line[2:].strip()
+                
+                if line: # Only add if there's content after stripping prefix
+                    steps.append(line)
 
         return {
             "plan": steps,
