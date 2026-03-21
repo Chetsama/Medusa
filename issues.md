@@ -1,4 +1,4 @@
-[issue-001]
+[issue-001] (DONE)
 
 I'm trying to get this fastapi router working. 
 
@@ -58,7 +58,7 @@ When I try and change yield chunk to, yield b"data: " + chunk + b"\n\n"
 Can you attempt to remedy this problem as simply as possible without refactoring the router.
 
 
-[issue-002] Model Optimisations
+[issue-002] Model Optimisations (DONE)
 
 Investigation into model length impact on performance, as well as these params
 --chunked-prefill
@@ -66,14 +66,14 @@ Investigation into model length impact on performance, as well as these params
 --dtype float16
 --use-cuda-graph
 
-[issue-003] Formal Tool Calling
+[issue-003] Formal Tool Calling 
 Can't write_file
 My model seems to be unable to perform the write_file tool call, I'm not sure if it's using the tools from the tool folder.
 
-[issue-004] LangGraph
+[issue-004] LangGraph (DONE)
 Implement LangGraph
 
-[issue-005] Multi Agents
+[issue-005] Multi Agents (DONE)
 multiple agents
 -critic
 -planner
@@ -94,3 +94,10 @@ I'm yet to implement multipl agents but I'd like to get the routing setup to ena
 [issue-006] Wrong Trousers (DONE)
 
 Using the wrong model
+
+
+[issue-007] Going in circles
+Agents seem to be incapable of writing files, which also makes me wonder whether any of the other tool calls are working correctly
+
+[issue-008] <thought></thought>
+It'd be nice to see which agents are actually working. At the moment I just get these messages saying that a thought is occuring. I would like to see which agent is currently working and what they are working on.

@@ -33,14 +33,15 @@ async def agent_streamer(messages: list) -> AsyncGenerator[str, None]:
         # Determine current node or status
         plan = state.get("plan", [])
         current_step = state.get("current_step", 0)
+        active_node = state.get("active_node", "agent")
         
         thought = ""
         if not plan:
-            thought = "Thinking about a plan..."
+            thought = f"[{active_node}] Thinking about a plan..."
         elif current_step < len(plan):
-            thought = f"Executing step {current_step + 1}/{len(plan)}: {plan[current_step]}"
+            thought = f"[{active_node}] Executing step {current_step + 1}/{len(plan)}: {plan[current_step]}"
         else:
-            thought = "Reviewing final results..."
+            thought = f"[{active_node}] Reviewing final results..."
 
         # Stream the thought ONLY if it changed
         if thought != last_thought:

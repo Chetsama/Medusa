@@ -38,6 +38,7 @@ class AgentState(TypedDict):
     current_step: int
     last_result: str
     retries: int
+    active_node: str
 
 # =========================
 # 3. AGENT CLASS
@@ -81,50 +82,72 @@ class OrchestratorAgent:
             "plan": steps,
             "current_step": 0,
             "messages": [response],
+            "active_node": "planner"
         }
 
     def _executor_node(self, state: AgentState):
         if state["current_step"] >= len(state["plan"]):
-            return {"current_step": state["current_step"]}
+            # If we're here, it means we've executed everything. 
+            # If the critic sent us back, we might want to restart or just return.
+            return {"current_step": state["current_step"], "active_node": "executor"}
 
         step = state["plan"][state["current_step"]]
-        prompt = SystemMessage(content=f"Execute this step. Use tools if needed:\n{step}")
+        prompt = SystemMessage(
+            content=(
+                f"You are the executor. Your current task is:\n{step}\n\n"
+                "You have access to tools. Use them if necessary to accomplish the task.\n"
+                "If the task requires multiple actions (e.g., search then write), you can call tools sequentially.\n"
+                "When the task is complete, provide a final summary of what you did."
+            )
+        )
 
-        response = self.executor_model.invoke([prompt] + state["messages"])
-        new_messages = [response]
-
-        if response.tool_calls:
+        current_messages = [prompt] + state["messages"]
+        new_messages = []
+        
+        # Loop for multiple tool turns
+        for _ in range(3): # Limit to 3 rounds of tool calls per step to avoid runaway
+            response = self.executor_model.invoke(current_messages)
+            new_messages.append(response)
+            current_messages.append(response)
+            
+            if not response.tool_calls:
+                break
+                
+            print(f"DEBUG: executor node detected tool calls: {response.tool_calls}")
             for call in response.tool_calls:
                 tool_name = call["name"]
                 tool_args = call["args"]
 
                 if tool_name in self.tools_by_name:
+                    print(f"DEBUG: calling tool {tool_name} with args {tool_args}")
                     tool_fn = self.tools_by_name[tool_name]
                     result = tool_fn.invoke(tool_args)
-                    new_messages.append(ToolMessage(content=str(result), tool_call_id=call["id"]))
+                    print(f"DEBUG: tool {tool_name} returned: {str(result)[:100]}...")
+                    msg = ToolMessage(content=str(result), tool_call_id=call["id"])
+                    new_messages.append(msg)
+                    current_messages.append(msg)
                 else:
-                    new_messages.append(ToolMessage(content=f"Error: Tool {tool_name} not found", tool_call_id=call["id"]))
-
-            # Follow-up after tool execution
-            follow_up = self.executor_model.invoke(state["messages"] + new_messages)
-            new_messages.append(follow_up)
-
-            return {
-                "messages": new_messages,
-                "last_result": follow_up.content,
-                "current_step": state["current_step"] + 1,
-            }
+                    print(f"DEBUG: tool {tool_name} not found")
+                    msg = ToolMessage(content=f"Error: Tool {tool_name} not found", tool_call_id=call["id"])
+                    new_messages.append(msg)
+                    current_messages.append(msg)
+            
+            # If it's just a tool call, continue the loop for the next turn
+            # But if the model gave content alongside tool calls, it might be the final answer (rare)
+            # Actually, LangChain's bind_tools models usually call tools then need to be called again.
 
         return {
             "messages": new_messages,
-            "last_result": response.content,
+            "last_result": new_messages[-1].content if new_messages else "No output",
             "current_step": state["current_step"] + 1,
+            "active_node": "executor"
         }
 
     def _critic_node(self, state: AgentState):
         prompt = SystemMessage(
             content=(
-                "Evaluate whether the task is fully complete and correct.\n"
+                "Evaluate whether the entire task is fully complete and correct based on the history.\n"
+                "If anything is missing or incorrect, explain what needs to be fixed.\n"
                 "Respond ONLY with:\n"
                 "- PASS\n"
                 "- RETRY: <reason>"
@@ -132,14 +155,16 @@ class OrchestratorAgent:
         )
         response = self.model.invoke([prompt] + state["messages"])
         
-        # Check if we should increment retries
         retries = state.get("retries", 0)
-        if not response.content.startswith("PASS"):
+        is_retry = not response.content.startswith("PASS")
+        if is_retry:
             retries += 1
             
         return {
             "messages": [response],
             "retries": retries,
+            "current_step": 0 if is_retry else state["current_step"],
+            "active_node": "critic"
         }
 
     def _route_after_executor(self, state: AgentState) -> Literal["executor", "critic"]:
@@ -147,10 +172,16 @@ class OrchestratorAgent:
             return "executor"
         return "critic"
 
-    def _route_after_critic(self, state: AgentState) -> Literal["executor", END]:
+    def _route_after_critic(self, state: AgentState) -> Literal["executor", "planner", END]:
         last_msg = state["messages"][-1].content
         if last_msg.startswith("PASS") or state["retries"] >= 2:
             return END
+        
+        # If we need to retry, go back to planner to potentially revise the plan
+        # or reset step to 0 to restart execution.
+        # Let's try resetting to 0 and going to executor first.
+        # But wait, LangGraph state is immutable, we return the change.
+        # If we return to 'executor', it will start from current_step (which is len(plan) if we didn't reset it).
         return "executor"
 
     def _build_graph(self):
@@ -162,7 +193,11 @@ class OrchestratorAgent:
         builder.add_edge(START, "planner")
         builder.add_edge("planner", "executor")
         builder.add_conditional_edges("executor", self._route_after_executor, ["executor", "critic"])
-        builder.add_conditional_edges("critic", self._route_after_critic, ["executor", END])
+        builder.add_conditional_edges("critic", self._route_after_critic, {
+            "executor": "executor",
+            "planner": "planner",
+            END: END
+        })
 
         return builder.compile()
 
