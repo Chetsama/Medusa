@@ -1,16 +1,22 @@
 <h1>Swarm</h1>
 
+Welcome to a multi agent workflow.
+
+Config
+
+
+<h2>Setup</h2>
+
+From the root directory, run docker compose up. This will spin up vLLM, hosted at http://vllm:8000
+
+And then run
+pip install fastapi uvicorn httpx langchain-openai langgraph langchain && uvicorn gateway.fastapi_router:app --host 0.0.0.0 --port 9000
+
 Currently, 
 -The request is sent to http://localhost:9000/v1 in Zed (appending /chat/completions)
--This hits the fastapi router which reaches out to http://vllm:8000
--Tool calls are baked in to vLLM
+-This will reach out to the fastapi router, create the agent orchestrator and then begin the agentic workflow with each agent reaching to http://vllm:8000
 
-We are yet to implement...
-[issue-002] Model Optimisations
-[issue-003] Formal Tool Calling
-[issue-004] LangGraph
-[issue-005] Multi Agents
-found in issues.md
+
 
 Initial Design
 ```

@@ -101,3 +101,9 @@ Agents seem to be incapable of writing files, which also makes me wonder whether
 
 [issue-008] <thought></thought>
 It'd be nice to see which agents are actually working. At the moment I just get these messages saying that a thought is occuring. I would like to see which agent is currently working and what they are working on.
+
+[issue-009] Persistent State
+At the moment the agents forget everything between sessions, next step is to persist context to a db
+
+[issue-010] A real fucker
+Because swarm runs on a "VM", the langgraph agents act in a closed loop. This means that when they try to read and write files, they are trying to perform those actions directly to the repo.

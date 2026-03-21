@@ -10,7 +10,7 @@ from langchain.messages import HumanMessage, SystemMessage, AIMessage
 
 app = FastAPI()
 
-VLLM_URL = "http://vllm:8000"
+VLLM_URL = "http://llm.coffee-dev.uk:8000"
 agent = OrchestratorAgent(api_base=f"{VLLM_URL}/v1")
 
 @app.get("/")
@@ -21,20 +21,20 @@ async def agent_streamer(messages: list) -> AsyncGenerator[str, None]:
     """Streams agent steps as SSE events with <thought> tags."""
     thread_id = str(uuid.uuid4())
     created_time = int(time.time())
-    
+
     # Initial chunk
     yield f"data: {json.dumps({'id': thread_id, 'object': 'chat.completion.chunk', 'created': created_time, 'model': 'agent-orchestrator', 'choices': [{'index': 0, 'delta': {'role': 'assistant', 'content': ''}, 'finish_reason': None}]})}\n\n"
 
     last_thought = ""
     last_state = None
-    
+
     async for state in agent.astream({"messages": messages, "retries": 0}):
         last_state = state
         # Determine current node or status
         plan = state.get("plan", [])
         current_step = state.get("current_step", 0)
         active_node = state.get("active_node", "agent")
-        
+
         thought = ""
         if not plan:
             thought = f"[{active_node}] Thinking about a plan..."
@@ -56,13 +56,13 @@ async def agent_streamer(messages: list) -> AsyncGenerator[str, None]:
         # If the last message is from the critic saying PASS, we might want the message before it
         # or have the executor provide the final answer.
         # Looking at OrchestratorAgent, the executor sets last_result.
-        
+
         final_content = last_state.get("last_result", "")
         if not final_content and last_state["messages"]:
              final_content = last_state["messages"][-1].content
-        
+
         yield f"data: {json.dumps({'id': thread_id, 'object': 'chat.completion.chunk', 'created': created_time, 'model': 'agent-orchestrator', 'choices': [{'index': 0, 'delta': {'content': final_content}, 'finish_reason': 'stop'}]})}\n\n"
-    
+
     yield "data: [DONE]\n\n"
 
 @app.post("/v1/chat/completions")
