@@ -9,7 +9,6 @@ def list_files(path: str = ".") -> str:
     Args:
         path: The directory path to list files from. Defaults to current directory.
     """
-    print(f"DEBUG: calling list_files with path={path}")
     try:
         return "\n".join(os.listdir(path))
     except Exception as e:
@@ -23,7 +22,6 @@ def read_file(path: str) -> str:
     Args:
         path: The path of the file to read.
     """
-    print(f"DEBUG: calling read_file with path={path}")
     try:
         with open(path, "r", encoding="utf-8") as file:
             return file.read()
@@ -46,7 +44,6 @@ def write_file(path: str, content: str) -> str:
          path = parts[1].lstrip("\\/")
     
     abs_path = os.path.abspath(path)
-    print(f"DEBUG: calling write_file with path={path} (absolute: {abs_path})")
     
     try:
         # Ensure directory exists

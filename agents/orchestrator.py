@@ -1,5 +1,5 @@
 MAX_MESSAGES = 25
-MAX_TOOL_TURNS = 5
+MAX_TOOL_TURNS = 10
 MAX_RETRIES = 2
 
 from typing import List, Literal, Dict, Any
@@ -24,7 +24,7 @@ from tools.registry import load_all_tools, get_tools_map
 # =========================
 
 class AgentState(TypedDict):
-    messages: Annotated[List[AnyMessage], operator.add]
+    messages: List[AnyMessage]
     plan: List[str]
     current_step: int
     last_result: str
@@ -53,16 +53,30 @@ class OrchestratorAgent:
 
 
 
+    def _parse_json(self, text: str) -> Any:
+        """Robustly extracts and parses JSON from a string that might contain other text."""
+        try:
+            # Try direct parse first
+            return json.loads(text)
+        except json.JSONDecodeError:
+            # Try finding JSON block
+            import re
+            match = re.search(r"(\{.*\}|\[.*\])", text, re.DOTALL)
+            if match:
+                try:
+                    return json.loads(match.group(1))
+                except:
+                    pass
+        return None
+
     def _planner_node(self, state: AgentState):
         fix_feedback = ""
         if state.get("messages"):
             last_msg = state["messages"][-1]
             if isinstance(last_msg, AIMessage):
-                try:
-                    parsed = json.loads(last_msg.content)
+                parsed = self._parse_json(last_msg.content)
+                if parsed and isinstance(parsed, dict):
                     fix_feedback = parsed.get("fix", "")
-                except:
-                    pass
 
         prompt = SystemMessage(
             content=(
@@ -74,17 +88,14 @@ class OrchestratorAgent:
 
         response = self.model.invoke([prompt] + state["messages"])
 
-        try:
-            steps = json.loads(response.content)
-            if not isinstance(steps, list):
-                raise ValueError()
-        except:
+        steps = self._parse_json(response.content)
+        if not isinstance(steps, list):
             steps = [response.content]  # fallback
 
         return {
             "plan": steps,
             "current_step": 0,
-            "messages": [response],
+            "messages": state["messages"] + [response],
             "active_node": "planner"
         }
 
@@ -93,6 +104,9 @@ class OrchestratorAgent:
             return {"active_node": "executor"}
 
         step = state["plan"][state["current_step"]]
+
+        # Filter out existing system messages to avoid duplication or confusion for some models
+        filtered_messages = [m for m in state["messages"] if not isinstance(m, SystemMessage)]
 
         prompt = SystemMessage(
             content=(
@@ -103,7 +117,7 @@ class OrchestratorAgent:
             )
         )
 
-        current_messages = [prompt] + state["messages"]
+        current_messages = [prompt] + filtered_messages
         new_messages = []
 
         for i in range(MAX_TOOL_TURNS):
@@ -114,8 +128,10 @@ class OrchestratorAgent:
             if not response.tool_calls:
                 break
 
+            # If we are here, we have tool calls. 
+            # Check if this is the last allowed turn.
             if i == MAX_TOOL_TURNS - 1:
-                raise RuntimeError("Max tool iterations reached without completion")
+                raise RuntimeError(f"Max tool iterations ({MAX_TOOL_TURNS}) reached without completion for task: {step}")
 
             for call in response.tool_calls:
                 tool_name = call["name"]
@@ -167,17 +183,14 @@ class OrchestratorAgent:
 
         retries = state.get("retries", 0)
 
-        try:
-            parsed = json.loads(response.content)
-            is_retry = parsed.get("status") != "PASS"
-        except:
-            is_retry = True
+        parsed = self._parse_json(response.content)
+        is_retry = not parsed or parsed.get("status") != "PASS"
 
         if is_retry:
             retries += 1
 
         return {
-            "messages": [response],
+            "messages": state["messages"] + [response],
             "retries": retries,
             "current_step": state["current_step"] if not is_retry else 0,
             "active_node": "critic"
