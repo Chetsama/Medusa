@@ -20,10 +20,24 @@ def root():
 def get_final_content(state: dict) -> str:
     """Extracts the final meaningful message from the assistant, skipping control messages."""
     messages = state.get("messages", [])
+    
+    # First, look specifically for a message from the 'summarizer' node if available
+    active_node = state.get("active_node")
+    if active_node == "summarizer" and messages:
+        return messages[-1].content
+
     for msg in reversed(messages):
         if isinstance(msg, AIMessage) and msg.content:
             content = msg.content.strip()
-            # Skip critic status messages (checking prefix now since they have reasoning)
+            # Skip critic status messages
+            try:
+                # Try to parse as JSON to see if it's a critic status
+                parsed = json.loads(content)
+                if isinstance(parsed, dict) and "status" in parsed:
+                    continue
+            except:
+                pass
+            
             if content.startswith("PASS") or content.startswith("RETRY"):
                 continue
             # Skip if it's just tool calls with no content
@@ -99,11 +113,21 @@ async def agent_streamer(messages: list) -> AsyncGenerator[str, None]:
 
             chunk += "\n"
         elif active_node == "critic":
-            last_msg = state["messages"][-1].content
-            if "PASS" in last_msg:
-                chunk = f"✨ **Critic:** Passed\n> {last_msg}\n\n"
-            else:
-                chunk = f"⚠️ **Critic:** Retry requested\n> {last_msg}\n\n"
+            last_msg_content = state["messages"][-1].content
+            try:
+                # Use a simple helper or direct parsing
+                parsed = json.loads(last_msg_content)
+                status = parsed.get("status", "UNKNOWN")
+                reason = parsed.get("reason", "")
+                if status == "PASS":
+                    chunk = f"✨ **Critic:** Passed\n> {reason}\n\n"
+                else:
+                    chunk = f"⚠️ **Critic:** Retry requested\n> {reason}\n\n"
+            except:
+                if "PASS" in last_msg_content:
+                    chunk = f"✨ **Critic:** Passed\n> {last_msg_content}\n\n"
+                else:
+                    chunk = f"⚠️ **Critic:** Retry requested\n> {last_msg_content}\n\n"
 
         if chunk:
             yield format_sse({

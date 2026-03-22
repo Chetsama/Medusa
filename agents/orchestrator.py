@@ -128,7 +128,7 @@ class OrchestratorAgent:
             if not response.tool_calls:
                 break
 
-            # If we are here, we have tool calls. 
+            # If we are here, we have tool calls.
             # Check if this is the last allowed turn.
             if i == MAX_TOOL_TURNS - 1:
                 raise RuntimeError(f"Max tool iterations ({MAX_TOOL_TURNS}) reached without completion for task: {step}")
@@ -196,25 +196,34 @@ class OrchestratorAgent:
             "active_node": "critic"
         }
 
+    def _summarizer_node(self, state: AgentState):
+        prompt = SystemMessage(
+            content=(
+                "You are the final summarizer. Based on the work done, provide a natural language response to the user's original request. "
+                "Be concise and helpful. Do NOT return JSON."
+            )
+        )
+        response = self.model.invoke([prompt] + state["messages"])
+        return {
+            "messages": state["messages"] + [response],
+            "active_node": "summarizer"
+        }
+
     def _route_after_executor(self, state: AgentState) -> Literal["critic"]:
         return "critic"
 
-    def _route_after_critic(self, state: AgentState) -> Literal["executor", "planner", END]:
+    def _route_after_critic(self, state: AgentState) -> Literal["executor", "planner", "summarizer"]:
         last_msg = state["messages"][-1].content
-
-        try:
-            parsed = json.loads(last_msg)
-            status = parsed.get("status")
-        except:
-            status = "RETRY"
+        parsed = self._parse_json(last_msg)
+        status = parsed.get("status", "RETRY") if parsed else "RETRY"
 
         if status == "PASS":
             if state["current_step"] >= len(state["plan"]):
-                return END
+                return "summarizer"
             return "executor"
 
         if state["retries"] >= MAX_RETRIES:
-            return END
+            return "summarizer" # Fallback to summary even if failed
 
         return "planner"
         # There was a bug here previously where model had decided to return an executor instead.
@@ -227,6 +236,7 @@ class OrchestratorAgent:
         builder.add_node("planner", self._planner_node)
         builder.add_node("executor", self._executor_node)
         builder.add_node("critic", self._critic_node)
+        builder.add_node("summarizer", self._summarizer_node)
 
         builder.add_edge(START, "planner")
         builder.add_edge("planner", "executor")
@@ -234,8 +244,9 @@ class OrchestratorAgent:
         builder.add_conditional_edges("critic", self._route_after_critic, {
             "executor": "executor",
             "planner": "planner",
-            END: END
+            "summarizer": "summarizer"
         })
+        builder.add_edge("summarizer", END)
 
         return builder.compile()
 
