@@ -6,7 +6,7 @@ import uuid
 import time
 from typing import AsyncGenerator
 from agents.orchestrator import OrchestratorAgent
-from langchain.messages import HumanMessage, SystemMessage, AIMessage
+from langchain.messages import HumanMessage, SystemMessage, AIMessage, ToolMessage
 
 app = FastAPI()
 
@@ -17,65 +17,127 @@ agent = OrchestratorAgent(api_base=f"{VLLM_URL}/v1")
 def root():
     return {"status": "Agentic Gateway is online"}
 
+def get_final_content(state: dict) -> str:
+    """Extracts the final meaningful message from the assistant, skipping control messages."""
+    messages = state.get("messages", [])
+    for msg in reversed(messages):
+        if isinstance(msg, AIMessage) and msg.content:
+            content = msg.content.strip()
+            # Skip critic status messages (checking prefix now since they have reasoning)
+            if content.startswith("PASS") or content.startswith("RETRY"):
+                continue
+            # Skip if it's just tool calls with no content
+            if not content and hasattr(msg, "tool_calls") and msg.tool_calls:
+                continue
+            return content
+    return state.get("last_result", "Task completed.")
+
+def format_sse(data: dict) -> str:
+    """Helper to format a dictionary as an SSE event."""
+    return f"data: {json.dumps(data)}\n\n"
+
 async def agent_streamer(messages: list) -> AsyncGenerator[str, None]:
-    """Streams agent steps as SSE events with a single consolidated <thought> tag."""
+    """Streams agent steps as SSE events with rich formatting and detailed feedback."""
     thread_id = str(uuid.uuid4())
     created_time = int(time.time())
 
     # Initial metadata chunk
-    yield f"data: {json.dumps({'id': thread_id, 'object': 'chat.completion.chunk', 'created': created_time, 'model': 'agent-orchestrator', 'choices': [{'index': 0, 'delta': {'role': 'assistant', 'content': ''}, 'finish_reason': None}]})}\n\n"
+    yield format_sse({
+        'id': thread_id,
+        'object': 'chat.completion.chunk',
+        'created': created_time,
+        'model': 'agent-orchestrator',
+        'choices': [{'index': 0, 'delta': {'role': 'assistant', 'content': ''}, 'finish_reason': None}]
+    })
 
     # Open the thought block
-    yield f"data: {json.dumps({'id': thread_id, 'object': 'chat.completion.chunk', 'created': created_time, 'model': 'agent-orchestrator', 'choices': [{'index': 0, 'delta': {'content': '<thought>'}, 'finish_reason': None}]})}\n\n"
+    yield format_sse({
+        'id': thread_id,
+        'object': 'chat.completion.chunk',
+        'created': created_time,
+        'model': 'agent-orchestrator',
+        'choices': [{'index': 0, 'delta': {'content': '<thought>\n'}, 'finish_reason': None}]
+    })
 
-    last_thought = ""
+    seen_messages = len(messages)
     last_state = None
+    last_node = None
 
     async for state in agent.astream({"messages": messages, "retries": 0, "active_node": "init"}):
         last_state = state
         active_node = state.get("active_node", "init")
-        plan = state.get("plan", [])
-        current_step = state.get("current_step", 0)
+        new_msgs = state["messages"][seen_messages:]
+        seen_messages = len(state["messages"])
 
-        thought = ""
-        if active_node == "init":
-            thought = "○ Initializing agent..."
-        elif active_node == "planner":
-            thought = "○ [planner] Generating execution plan..."
-        elif active_node == "executor":
+        chunk = ""
+
+        if active_node == "init" and last_node != "init":
+            chunk = "🚀 Initializing agent...\n"
+
+        elif active_node == "planner" and last_node != "planner":
+            plan = state.get("plan", [])
             if plan:
-                # In our graph, current_step is incremented after the node finishes.
-                # So if we just finished a node, current_step-1 is what just happened.
-                step_idx = current_step - 1
-                if 0 <= step_idx < len(plan):
-                    thought = f"○ [executor] Step {step_idx + 1}/{len(plan)}: {plan[step_idx]}"
-                else:
-                    thought = f"○ [executor] Moving to next step..."
+                chunk = "📋 Planner...\n"
+                for i, step in enumerate(plan):
+                    chunk += f"{i+1}. {step}\n"
+                chunk += "\n"
             else:
-                thought = "○ [executor] Executing task..."
-        elif active_node == "critic":
-            last_msg = state["messages"][-1].content if state.get("messages") else ""
-            status = "PASS" if "PASS" in last_msg else "RETRY"
-            thought = f"○ [critic] Verification: {status}"
+                chunk = "🧠 **Generating execution plan...**\n"
 
-        # Stream the thought ONLY if it changed
-        if thought and thought != last_thought:
-            yield f"data: {json.dumps({'id': thread_id, 'object': 'chat.completion.chunk', 'created': created_time, 'model': 'agent-orchestrator', 'choices': [{'index': 0, 'delta': {'content': f'{thought}'}, 'finish_reason': None}]})}\n\n"
-            last_thought = thought
+        elif active_node == "executor":
+            plan = state.get("plan", [])
+            current_step = state.get("current_step", 0)
+            step_idx = current_step - 1
+
+            if 0 <= step_idx < len(plan):
+                chunk += f"🛠️ **Executor {step_idx + 1}/{len(plan)}:** {plan[step_idx]}\n"
+
+            for msg in new_msgs:
+                if hasattr(msg, "tool_calls") and msg.tool_calls:
+                    for tc in msg.tool_calls:
+                        chunk += f"  🔧 *Tool Call:* `{tc['name']}`\n"
+
+            chunk += "\n"
+        elif active_node == "critic":
+            last_msg = state["messages"][-1].content
+            if "PASS" in last_msg:
+                chunk = f"✨ **Critic:** Passed\n> {last_msg}\n\n"
+            else:
+                chunk = f"⚠️ **Critic:** Retry requested\n> {last_msg}\n\n"
+
+        if chunk:
+            yield format_sse({
+                'id': thread_id,
+                'object': 'chat.completion.chunk',
+                'created': created_time,
+                'model': 'agent-orchestrator',
+                'choices': [{'index': 0, 'delta': {'content': chunk}, 'finish_reason': None}]
+            })
+
+        last_node = active_node
 
     # Close the thought block
-    yield f"data: {json.dumps({'id': thread_id, 'object': 'chat.completion.chunk', 'created': created_time, 'model': 'agent-orchestrator', 'choices': [{'index': 0, 'delta': {'content': '</thought>'}, 'finish_reason': None}]})}\n\n"
+    yield format_sse({
+        'id': thread_id,
+        'object': 'chat.completion.chunk',
+        'created': created_time,
+        'model': 'agent-orchestrator',
+        'choices': [{'index': 0, 'delta': {'content': '</thought>\n\n'}, 'finish_reason': None}]
+    })
 
-    # Final content from the last state produced by astream
+    # Final content
     if last_state:
-        final_content = last_state.get("last_result", "")
-        if not final_content and last_state.get("messages"):
-             final_content = last_state["messages"][-1].content
-
-        if final_content:
-            yield f"data: {json.dumps({'id': thread_id, 'object': 'chat.completion.chunk', 'created': created_time, 'model': 'agent-orchestrator', 'choices': [{'index': 0, 'delta': {'content': final_content}, 'finish_reason': 'stop'}]})}\n\n"
+        final_content = get_final_content(last_state)
+        yield format_sse({
+            'id': thread_id,
+            'object': 'chat.completion.chunk',
+            'created': created_time,
+            'model': 'agent-orchestrator',
+            'choices': [{'index': 0, 'delta': {'content': final_content}, 'finish_reason': 'stop'}]
+        })
 
     yield "data: [DONE]\n\n"
+
 
 @app.post("/v1/chat/completions")
 async def chat_completions(request: Request):
@@ -99,7 +161,7 @@ async def chat_completions(request: Request):
         return StreamingResponse(agent_streamer(messages), media_type="text/event-stream")
     else:
         result = await agent.ainvoke({"messages": messages, "retries": 0})
-        final_msg = result["messages"][-1].content
+        final_msg = get_final_content(result)
         return {
             "id": str(uuid.uuid4()),
             "object": "chat.completion",
@@ -111,6 +173,7 @@ async def chat_completions(request: Request):
                 "finish_reason": "stop"
             }]
         }
+
 
 @app.api_route("/v1/{path:path}", methods=["GET", "POST", "PUT", "DELETE"])
 async def proxy(path: str, request: Request):
