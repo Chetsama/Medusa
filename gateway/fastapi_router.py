@@ -26,7 +26,7 @@ async def agent_streamer(messages: list) -> AsyncGenerator[str, None]:
     yield f"data: {json.dumps({'id': thread_id, 'object': 'chat.completion.chunk', 'created': created_time, 'model': 'agent-orchestrator', 'choices': [{'index': 0, 'delta': {'role': 'assistant', 'content': ''}, 'finish_reason': None}]})}\n\n"
 
     # Open the thought block
-    yield f"data: {json.dumps({'id': thread_id, 'object': 'chat.completion.chunk', 'created': created_time, 'model': 'agent-orchestrator', 'choices': [{'index': 0, 'delta': {'content': '<thought>\n'}, 'finish_reason': None}]})}\n\n"
+    yield f"data: {json.dumps({'id': thread_id, 'object': 'chat.completion.chunk', 'created': created_time, 'model': 'agent-orchestrator', 'choices': [{'index': 0, 'delta': {'content': '<thought>'}, 'finish_reason': None}]})}\n\n"
 
     last_thought = ""
     last_state = None
@@ -57,14 +57,14 @@ async def agent_streamer(messages: list) -> AsyncGenerator[str, None]:
             last_msg = state["messages"][-1].content if state.get("messages") else ""
             status = "PASS" if "PASS" in last_msg else "RETRY"
             thought = f"○ [critic] Verification: {status}"
-        
+
         # Stream the thought ONLY if it changed
         if thought and thought != last_thought:
-            yield f"data: {json.dumps({'id': thread_id, 'object': 'chat.completion.chunk', 'created': created_time, 'model': 'agent-orchestrator', 'choices': [{'index': 0, 'delta': {'content': f'{thought}\n'}, 'finish_reason': None}]})}\n\n"
+            yield f"data: {json.dumps({'id': thread_id, 'object': 'chat.completion.chunk', 'created': created_time, 'model': 'agent-orchestrator', 'choices': [{'index': 0, 'delta': {'content': f'{thought}'}, 'finish_reason': None}]})}\n\n"
             last_thought = thought
 
     # Close the thought block
-    yield f"data: {json.dumps({'id': thread_id, 'object': 'chat.completion.chunk', 'created': created_time, 'model': 'agent-orchestrator', 'choices': [{'index': 0, 'delta': {'content': '</thought>\n\n'}, 'finish_reason': None}]})}\n\n"
+    yield f"data: {json.dumps({'id': thread_id, 'object': 'chat.completion.chunk', 'created': created_time, 'model': 'agent-orchestrator', 'choices': [{'index': 0, 'delta': {'content': '</thought>'}, 'finish_reason': None}]})}\n\n"
 
     # Final content from the last state produced by astream
     if last_state:
