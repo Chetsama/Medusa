@@ -1,3 +1,20 @@
+[issue-000]
+
+Ran into permissions issue with docker
+
+```
+  unable to get image 'chromadb/chroma': permission denied while trying to connect to the Docker daemon socket at unix:///var/run/docker.sock: Get "http://%2Fvar%2Frun%2Fdocker.sock/v1.51/images/chromadb/chroma/json": dial unix /var/run/docker.sock: connect: permission denied
+```
+Had to run
+```
+  sudo chmod 777 /var/run/docker.sock
+```
+
+Nvidia runtime issue
+
+https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html
+https://github.com/NVIDIA-ISAAC-ROS/isaac_ros_visual_slam/issues/132#issuecomment-2134831510
+
 [issue-001] (DONE)
 
 I'm trying to get this fastapi router working. 
@@ -89,7 +106,7 @@ As I understand the routing right now happens like so,
 -This hits the fastapi router which reaches out to http://vllm:8000
 -Tool calls are baked in to vLLM
 
-I'm yet to implement multipl agents but I'd like to get the routing setup to enable this in the future. Can you change the current setup so that we route and ultimately use the executor for our single instance?
+I'm yet to implement multiple agents but I'd like to get the routing setup to enable this in the future. Can you change the current setup so that we route and ultimately use the executor for our single instance?
 
 [issue-006] Wrong Trousers (DONE)
 
@@ -107,7 +124,7 @@ It'd be nice to see which agents are actually working. At the moment I just get 
 At the moment the agents forget everything between sessions, next step is to persist context to a db
 
 [issue-010] A real fucker (DONE)
-Because swarm runs on a "VM", the langgraph agents act in a closed loop. This means that when they try to read and write files, they are trying to perform those actions directly to the repo.
+Because Medusa runs on a "VM", the langgraph agents act in a closed loop. This means that when they try to read and write files, they are trying to perform those actions directly to the repo.
 
 [issue-011] Hitting a wall
 Periodically hitting the context limit, impressively, it just keeps fucking going

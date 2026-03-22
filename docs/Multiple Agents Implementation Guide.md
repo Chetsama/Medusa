@@ -26,7 +26,7 @@ Now that I have a good understanding of the existing project, let me research La
 
 # Implementing LangChain with Multiple Agents: A Comprehensive Guide
 
-Based on my analysis of the Swarm project and research into LangChain patterns, I'll provide you with a comprehensive guide on implementing multiple agents using LangChain principles.
+Based on my analysis of the Medusa project and research into LangChain patterns, I'll provide you with a comprehensive guide on implementing multiple agents using LangChain principles.
 
 ## Key Concepts and Architecture Patterns
 
@@ -58,7 +58,7 @@ Agents in LangChain typically consist of:
 
 ### 1. Architecture Pattern for Multiple Agents
 
-Based on your Swarm project's architecture, here's a robust implementation approach:
+Based on your Medusa project's architecture, here's a robust implementation approach:
 
 ```python
 # Example multi-agent system structure
@@ -141,7 +141,7 @@ class SharedContext:
 
 ## Implementation Strategy for Your Project
 
-Based on the Swarm project structure, here's how to implement LangChain-style multiple agents:
+Based on the Medusa project structure, here's how to implement LangChain-style multiple agents:
 
 ### Step 1: Enhance Agent Communication
 Your current setup has Planner, Executor, and Critic agents. To improve it with LangChain concepts:
@@ -271,9 +271,9 @@ class TaskDecomposer:
 3. **Resource Management**: Monitor memory and CPU usage for distributed agents
 4. **Timeout Handling**: Implement timeouts to prevent hanging agents
 
-## Integration with Existing Swarm Project
+## Integration with Existing Medusa Project
 
-Based on your current Swarm project, you could enhance it by:
+Based on your current Medusa project, you could enhance it by:
 
 1. **Adding LangChain Dependencies**:
 ```python
@@ -345,7 +345,7 @@ class AdaptiveRouter:
 
 ## Conclusion
 
-Implementing multiple agents with LangChain principles offers powerful capabilities for complex task execution. By applying these patterns to your existing Swarm project, you can create a robust multi-agent system that:
+Implementing multiple agents with LangChain principles offers powerful capabilities for complex task execution. By applying these patterns to your existing Medusa project, you can create a robust multi-agent system that:
 
 1. **Scales effectively** with proper agent composition
 2. **Manages complexity** through structured communication patterns
@@ -390,7 +390,7 @@ Agents in LangChain typically consist of:
 
 ### 1. Architecture Pattern for Multiple Agents
 
-Based on your Swarm project, here's a robust implementation approach:
+Based on your Medusa project, here's a robust implementation approach:
 
 ```python
 # Example multi-agent system structure
@@ -455,7 +455,7 @@ async def cooperative_agent_system(task: str, agents: List[AgentExecutor]):
 
 ## Implementation Strategy for Your Project
 
-Based on your Swarm project structure, here's how to implement LangChain-style multiple agents:
+Based on your Medusa project structure, here's how to implement LangChain-style multiple agents:
 
 ### Step 1: Enhance Agent Communication
 Your current setup has Planner, Executor, and Critic agents. To improve it with LangChain concepts:
@@ -587,9 +587,9 @@ class TaskDecomposer:
 3. **Resource Management**: Monitor memory and CPU usage for distributed agents
 4. **Timeout Handling**: Implement timeouts to prevent hanging agents
 
-## Integration with Existing Swarm Project
+## Integration with Existing Medusa Project
 
-Based on your current Swarm project, you could enhance it by:
+Based on your current Medusa project, you could enhance it by:
 
 ### 1. Adding LangChain Dependencies
 ```python
@@ -661,7 +661,7 @@ class AdaptiveRouter:
 
 ## Conclusion
 
-Implementing multiple agents with LangChain principles offers powerful capabilities for complex task execution. By applying these patterns to your existing Swarm project, you can create a robust multi-agent system that:
+Implementing multiple agents with LangChain principles offers powerful capabilities for complex task execution. By applying these patterns to your existing Medusa project, you can create a robust multi-agent system that:
 
 1. **Scales effectively** with proper agent composition
 2. **Manages complexity** through structured communication patterns
@@ -697,25 +697,25 @@ Let me examine the project structure to better understand your current implement
 **Tool Call: 10 matches**
 Status: Completed
 
-file://C:\Projects\swarm\agents\critic.py
+file://C:\Projects\Medusa\agents\critic.py
 
-file://C:\Projects\swarm\agents\executor.py
+file://C:\Projects\Medusa\agents\executor.py
 
-file://C:\Projects\swarm\agents\planner.py
+file://C:\Projects\Medusa\agents\planner.py
 
-file://C:\Projects\swarm\gateway\fastapi_router.py
+file://C:\Projects\Medusa\gateway\fastapi_router.py
 
-file://C:\Projects\swarm\main.py
+file://C:\Projects\Medusa\main.py
 
-file://C:\Projects\swarm\rag\retriever.py
+file://C:\Projects\Medusa\rag\retriever.py
 
-file://C:\Projects\swarm\tools\filesystem.py
+file://C:\Projects\Medusa\tools\filesystem.py
 
-file://C:\Projects\swarm\tools\git.py
+file://C:\Projects\Medusa\tools\git.py
 
-file://C:\Projects\swarm\tools\nanoshell.py
+file://C:\Projects\Medusa\tools\nanoshell.py
 
-file://C:\Projects\swarm\tools\shell.py
+file://C:\Projects\Medusa\tools\shell.py
 
 ## Assistant
 
@@ -1007,7 +1007,7 @@ Status: Completed
 
 Found 5 matches:
 
-## Matches in swarm\README.md
+## Matches in Medusa\README.md
 
 ### L17-27
 ```
@@ -1028,7 +1028,7 @@ Found 5 matches:
 
 ### L43-53
 ```
-  swarm/
+  Medusa/
   ├─ docker-compose.yml
   ├─ gateway/
   │   └─ fastapi_router.py
@@ -1043,7 +1043,7 @@ Found 5 matches:
 
 5 lines remaining in ancestor node. Read the file to see all.
 
-## Matches in swarm\agents\critic.py
+## Matches in Medusa\agents\critic.py
 
 ### L5-9
 ```
@@ -1054,7 +1054,7 @@ Return either SUCCESS or FAILURE with explanation.
 """
 ```
 
-## Matches in swarm\issues.md
+## Matches in Medusa\issues.md
 
 ### L76-80
 ```
@@ -1173,4 +1173,3 @@ async def orchestrate_task(task):
 The reason you're seeing all requests go directly to Qwen3-Coder is because your system is configured to route everything through the FastAPI gateway, which forwards all requests to the vLLM service. The agent structure exists conceptually but isn't currently wired into your execution flow.
 
 Would you like me to help you implement this multi-agent orchestration system properly?
-
