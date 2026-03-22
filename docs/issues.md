@@ -126,9 +126,17 @@ At the moment the agents forget everything between sessions, next step is to per
 [issue-010] A real fucker (DONE)
 Because Medusa runs on a "VM", the langgraph agents act in a closed loop. This means that when they try to read and write files, they are trying to perform those actions directly to the repo.
 
-[issue-011] Hitting a wall
+[issue-011] Hitting a wall ()
 Periodically hitting the context limit, impressively, it just keeps fucking going
 
 [issue-012] Make it easier to run elsewhere
 
-[issue-013] How often should the critic be intervening?
+[issue-013] How often should the critic be intervening? (done)
+
+[issue-014]
+block
+{
+  "status": "PASS" | "RETRY",
+  "reason": "...",
+  "fix": "what should change"
+}
