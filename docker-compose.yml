@@ -14,8 +14,9 @@ services:
       - NVIDIA_VISIBLE_DEVICES=0
       - PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True,max_split_size_mb:512
     command: >
-      --model cyankiwi/Qwen3-Coder-30B-A3B-Instruct-AWQ-4bit
-      --served-model-name qwen3-coder
+      --model google/gemma-4-26B-A4B
+      --served-model-name gemma4
+      --quantization awq
       --dtype auto
       --tensor-parallel-size 1
       --max-model-len 40960

@@ -140,3 +140,15 @@ block
   "reason": "...",
   "fix": "what should change"
 }
+
+[issue-015]
+MCP servers
+Context7
+NEXT.js for web
+
+[issue-016]
+ The feedback integration in the planner node is incomplete - it only processes the most recent AI message.
+
+[issue-017] Model switch
+      #--model cyankiwi/Qwen3-Coder-30B-A3B-Instruct-AWQ-4bit
+      #--served-model-name qwen3-coder
