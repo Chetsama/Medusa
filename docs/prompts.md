@@ -17,3 +17,19 @@ example
 Take a look at the project, the readme.md, gateway/fastapi_router.py and agents/orchestrator.py should give you some context.
 
 As I currently understand it, the gateway/fastapi_router.py has to be run in the directory you would like the agents to be able to read and write files in. First, is that correct? Second, how could this be adjusted to allow the agents to work in any directory?
+
+
+
+
+
+
+Test
+
+Create a folder called website...
+
+Inside that folder...
+
+Make me a modern website to showcase my photography skills
+Use HTML, CSS, Javascript and vite
+Make a light/darkmode toggle
+For images to use as placeholders, create a folder for images and populate that folder with 8 stock images

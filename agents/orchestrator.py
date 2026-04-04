@@ -37,7 +37,7 @@ class AgentState(TypedDict):
 # =========================
 
 class OrchestratorAgent:
-    def __init__(self, model_name: str = "qwen3-coder", api_base: str = "http://localhost:9000/v1"):
+    def __init__(self, model_name: str = "gemma4", api_base: str = "http://localhost:9000/v1"):
         self.model = ChatOpenAI(
             openai_api_base=api_base,
             openai_api_key="none",
@@ -120,12 +120,12 @@ class OrchestratorAgent:
 
         current_messages = [prompt] + filtered_messages
         new_messages = []
-        
+
         # Track progress to prevent infinite loops
         last_progress = 0
         progress_counter = 0
         task_complete = False
-        
+
         # Track execution time for timeout handling
         start_time = time.time()
         tool_timeout = 30  # 30 seconds per tool execution
@@ -134,7 +134,7 @@ class OrchestratorAgent:
             # Check for timeout
             if time.time() - start_time > tool_timeout:
                 raise RuntimeError(f"Tool execution timed out after {tool_timeout} seconds for task: {step}")
-            
+
             response = self.executor_model.invoke(current_messages)
             new_messages.append(response)
             current_messages.append(response)
@@ -145,7 +145,7 @@ class OrchestratorAgent:
                 progress_counter = 0
             else:
                 progress_counter += 1
-            
+
             # Detect if we're stuck in a loop
             if progress_counter > 3:  # If no progress for 3 iterations, break
                 print(f"Warning: No progress detected for task '{step}' - breaking loop")
@@ -180,7 +180,7 @@ class OrchestratorAgent:
                 msg = ToolMessage(content=str(result), tool_call_id=call["id"])
                 new_messages.append(msg)
                 current_messages.append(msg)
-                
+
                 # Update progress on successful tool execution
                 if len(new_messages) > last_progress:
                     last_progress = len(new_messages)

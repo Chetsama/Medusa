@@ -738,7 +738,7 @@ Break user tasks into ordered actionable steps.
 
 async def plan(task):
     payload = {
-        "model": "qwen3-coder",
+        "model": "gemma4",
         "messages": [
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": task}
@@ -824,7 +824,7 @@ Return either SUCCESS or FAILURE with explanation.
 
 async def review(result):
     payload = {
-        "model": "qwen3-coder",
+        "model": "gemma4",
         "messages": [
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": str(result)}
