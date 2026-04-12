@@ -1,20 +1,8 @@
-// Theme toggle functionality
-const themeToggle = document.getElementById('theme-toggle');
-const currentTheme = localStorage.getItem('theme') || 'dark';
+// Include common script functionality
+import('./common-script.js').catch(err => console.error('Failed to load common script:', err));
 
-// Set initial theme
-document.body.setAttribute('data-theme', currentTheme);
-
-themeToggle.addEventListener('click', () => {
-  const currentTheme = document.body.getAttribute('data-theme');
-  const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
-
-  document.body.setAttribute('data-theme', newTheme);
-  localStorage.setItem('theme', newTheme);
-});
-
-// Image gallery functionality
-const gallery = document.querySelector('.gallery');
+// Gallery functionality
+const galleryGrid = document.querySelector('.gallery-grid');
 
 // Generate placeholder images
 const imageCount = 8;
@@ -27,7 +15,7 @@ for (let i = 1; i <= imageCount; i++) {
   img.alt = `Photo ${i}`;
 
   imageCard.appendChild(img);
-  gallery.appendChild(imageCard);
+  galleryGrid.appendChild(imageCard);
 }
 
 // Create overlay element

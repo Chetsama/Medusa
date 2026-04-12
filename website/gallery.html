@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Photography Portfolio</title>
+  <title>Gallery - Photography Portfolio</title>
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
@@ -12,10 +12,10 @@
       <h1 class="nav-logo">My Photography</h1>
       <ul class="nav-menu">
         <li class="nav-item">
-          <a href="index.html" class="nav-link active">Home</a>
+          <a href="index.html" class="nav-link">Home</a>
         </li>
         <li class="nav-item">
-          <a href="gallery.html" class="nav-link">Gallery</a>
+          <a href="gallery.html" class="nav-link active">Gallery</a>
         </li>
         <li class="nav-item">
           <a href="contact.html" class="nav-link">Contact</a>
@@ -25,18 +25,17 @@
     </div>
   </nav>
 
-  <section class="hero">
-    <h2>Capturing Moments, Creating Memories</h2>
-    <p>Professional photography portfolio showcasing artistic vision and technical excellence</p>
-    <button class="cta-button">View Portfolio</button>
-  </section>
+  <main class="gallery-main">
+    <section class="gallery-header">
+      <h2>Photo Gallery</h2>
+      <p>Explore my collection of professional photographs</p>
+    </section>
 
-  <main>
-    <section class="gallery">
-      <!-- Images will be populated by JavaScript -->
+    <section class="gallery-grid">
+      <!-- Gallery items will be populated by JavaScript -->
     </section>
   </main>
 
-  <script src="common-script.js"></script>
+  <script src="gallery-script.js"></script>
 </body>
 </html>
