@@ -28,3 +28,6 @@ This is a modern photography portfolio website built with HTML, CSS, and JavaScr
 3. Open `index.html` in a web browser
 
 The site will remember your theme preference between visits.
+
+
+python3 -m http.server 8080
