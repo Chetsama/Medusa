@@ -4,29 +4,10 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Photography Portfolio</title>
-  <style>
-    /* Prevent FOUC */
-    body {
-      transition: none !important;
-    }
-    body[data-theme="dark"] {
-      --bg-color: #1a1a1a;
-      --text-color: #f0f0f0;
-      --accent-color: #4CAF50;
-      --border-color: #333333;
-      --shadow: rgba(0, 0, 0, 0.3);
-    }
-    body[data-theme="light"] {
-      --bg-color: #ffffff;
-      --text-color: #333333;
-      --accent-color: #2E6F40;
-      --border-color: #e0e0e0;
-      --shadow: rgba(0, 0, 0, 0.1);
-    }
-  </style>
+  <script src="theme-init.js"></script>
   <link rel="stylesheet" href="styles.css">
 </head>
-<body data-theme="dark">
+<body>
   <nav class="navbar">
     <div class="nav-container">
       <h1 class="nav-logo">My Photography</h1>
@@ -85,5 +66,6 @@
   </main>
 
   <script src="common-script.js"></script>
+  <script src="script.js"></script>
 </body>
 </html>

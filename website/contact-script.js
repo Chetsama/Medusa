@@ -1,6 +1,3 @@
-// Include common script functionality
-import('./common-script.js').catch(err => console.error('Failed to load common script:', err));
-
 // Contact form functionality
 document.getElementById('contact-form').addEventListener('submit', function(e) {
   e.preventDefault();
