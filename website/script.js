@@ -13,6 +13,40 @@ themeToggle.addEventListener('click', () => {
   localStorage.setItem('theme', newTheme);
 });
 
+// Carousel functionality
+let currentSlide = 0;
+const slides = document.querySelectorAll('.carousel-item');
+const indicators = document.querySelectorAll('.indicator');
+
+function changeSlide(direction) {
+  slides[currentSlide].classList.remove('active');
+  indicators[currentSlide].classList.remove('active');
+
+  if (direction === 1) {
+    currentSlide = (currentSlide + 1) % slides.length;
+  } else {
+    currentSlide = (currentSlide - 1 + slides.length) % slides.length;
+  }
+
+  slides[currentSlide].classList.add('active');
+  indicators[currentSlide].classList.add('active');
+}
+
+function goToSlide(index) {
+  slides[currentSlide].classList.remove('active');
+  indicators[currentSlide].classList.remove('active');
+
+  currentSlide = index;
+
+  slides[currentSlide].classList.add('active');
+  indicators[currentSlide].classList.add('active');
+}
+
+// Auto-advance carousel every 5 seconds
+setInterval(() => {
+  changeSlide(1);
+}, 5000);
+
 // Image gallery functionality
 const gallery = document.querySelector('.gallery');
 
