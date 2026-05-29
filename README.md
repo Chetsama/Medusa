@@ -124,3 +124,9 @@ Project Structure
 ##**+*#*=-------:--:::----::::--======++++++*****++++++=---+++++++++=-:---=+##*==------+
 #######=-+**#+--::-:::::--::::::----===+++++++++++++=+++=--=========-:::--=+####*+==--=*
 ```
+
+
+Claude usage 
+export ANTHROPIC_BASE_URL=
+export ANTHROPIC_AUTH_TOKEN=none
+export CLAUDE_CODE_MAX_OUTPUT_TOKENS=16000
