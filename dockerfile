@@ -1,4 +1,4 @@
-FROM vllm/vllm-openai:gemma4
+FROM vllm/vllm-openai:nightly
 
 RUN apt-get update && apt-get install -y git && rm -rf /var/lib/apt/lists/*
 
