@@ -3,3 +3,4 @@ gateway/__pycache__/
 .venv
 __pycache__/
 GachaGacha
+.env
