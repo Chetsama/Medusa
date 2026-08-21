@@ -14,9 +14,7 @@ services:
       - NVIDIA_VISIBLE_DEVICES=0
       - PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True,max_split_size_mb:512
     command: >
-      --model unsloth/Qwen3.8-27B
-      --quantization bitsandbytes
-      --load-format bitsandbytes
+      --model unsloth/https://huggingface.co/unsloth/Qwen3.8-27B-GGUF
       --served-model-name qwen3.8-27b
       --dtype auto
       --tensor-parallel-size 1
