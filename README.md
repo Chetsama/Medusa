@@ -32,6 +32,26 @@ curl http://localhost:9000/v1/chat/completions \
   }'
 ```
 
+<h2>Voice Assistant Client (WSL)</h2>
+
+To have a real-time full-duplex voice conversation with Medusa in WSL:
+
+```bash
+# 1. Install voice client dependencies
+pip install -r requirements-voice.txt
+
+# 2. Launch the interactive voice client (Push-to-Talk)
+python3 voice_client.py
+```
+
+Voice Client Options:
+- `python3 voice_client.py`: Interactive push-to-talk conversation.
+- `python3 voice_client.py --voice jarvis`: Change TTS voice.
+- `python3 voice_client.py --duration 5`: Record fixed 5-second bursts instead of push-to-talk.
+- `python3 voice_client.py --text "Hello Medusa"`: Send text and hear voice response.
+- `python3 voice_client.py --input-file sample.wav`: Transcribe audio file and get voice response.
+
+
 Initial Design
 ```
 

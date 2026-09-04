@@ -1,5 +1,6 @@
 from fastapi import FastAPI, Request, Response
 from fastapi.responses import StreamingResponse
+import os
 import httpx
 import json
 import uuid
@@ -10,8 +11,9 @@ from langchain.messages import HumanMessage, SystemMessage, AIMessage, ToolMessa
 
 app = FastAPI()
 
-VLLM_URL = "http://llm.coffee-dev.uk"
-agent = OrchestratorAgent(api_base=f"{VLLM_URL}/v1")
+VLLM_URL = os.getenv("VLLM_URL", "http://llm.coffee-dev.uk")
+MODEL_NAME = os.getenv("MODEL_NAME", "qwen3.8-27b")
+agent = OrchestratorAgent(model_name=MODEL_NAME, api_base=f"{VLLM_URL}/v1")
 
 @app.get("/")
 def root():
