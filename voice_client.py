@@ -24,11 +24,20 @@ import tempfile
 import time
 import urllib.error
 import urllib.request
-from typing import List, Dict, Optional, Tuple
+from typing import List, Dict, Optional, Tuple, Any
+
+# Ensure project root is in sys.path
+PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
+if PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, PROJECT_ROOT)
+
+from agents.orchestrator import OrchestratorAgent
+from langchain.messages import HumanMessage, AIMessage, ToolMessage
 
 # Automatically configure WSLg PulseAudio if running under WSL
 if "PULSE_SERVER" not in os.environ and os.path.exists("/mnt/wslg/PulseServer"):
     os.environ["PULSE_SERVER"] = "/mnt/wslg/PulseServer"
+
 
 # Ensure user-writable HuggingFace cache
 if "HF_HOME" not in os.environ:
@@ -262,15 +271,22 @@ class SpeechToText:
         return ""
 
 
+DEFAULT_LLM_URL = "http://llm.coffee-dev.uk/v1"
+DEFAULT_TTS_URL = "http://localhost:5000/v1/audio/speech"
+DEFAULT_MODEL = "qwen3.8-27b"
+DEFAULT_VOICE = "jarvis"
+
+
 class MedusaVoiceClient:
     """Full-duplex orchestrator for interactive voice conversation."""
 
     def __init__(
         self,
-        gateway_url: str = "http://localhost:9000/v1/chat/completions",
-        tts_url: str = "http://localhost:5000/v1/audio/speech",
-        model_name: str = "qwen3.8-27b",
-        voice: str = "jarvis",
+        gateway_url: Optional[str] = None,
+        llm_url: str = DEFAULT_LLM_URL,
+        tts_url: str = DEFAULT_TTS_URL,
+        model_name: str = DEFAULT_MODEL,
+        voice: str = DEFAULT_VOICE,
         speed: float = 1.0,
         stt_model: str = "base.en",
         stt_device: str = "auto",
@@ -280,6 +296,7 @@ class MedusaVoiceClient:
         duration: Optional[float] = None
     ):
         self.gateway_url = gateway_url
+        self.llm_url = llm_url
         self.tts_url = tts_url
         self.model_name = model_name
         self.voice = voice
@@ -289,13 +306,104 @@ class MedusaVoiceClient:
         self.use_stt = use_stt
         self.duration = duration
 
+        # Initialize embedded agent when running locally without external HTTP gateway
+        self.agent = None
+        if not self.gateway_url:
+            self.agent = OrchestratorAgent(model_name=self.model_name, api_base=self.llm_url)
+
         self.recorder = AudioRecorder()
         self.player = AudioPlayer()
         self.stt = SpeechToText(model_size=stt_model, device=stt_device) if use_stt else None
-        self.history: List[Dict[str, str]] = []
+        self.history: List[Any] = []
 
-    def send_chat_completion(self, user_text: str) -> Tuple[str, str]:
-        """Sends user message to Medusa gateway and receives reasoning + final reply."""
+    def _execute_embedded_turn(self, user_text: str) -> Tuple[str, str]:
+        """Executes agent turn directly with local tools in current working directory."""
+        user_msg = HumanMessage(content=user_text)
+        self.history.append(user_msg)
+
+        print(f"\n{Colors.BLUE}{Colors.BOLD}Agent Workflow ({os.getcwd()}):{Colors.RESET}")
+
+        seen_messages = len(self.history)
+        last_node = None
+        final_reply = ""
+        last_state = None
+
+        try:
+            for state in self.agent.stream({"messages": self.history, "retries": 0, "active_node": "init"}):
+                last_state = state
+                active_node = state.get("active_node", "init")
+                new_msgs = state["messages"][seen_messages:]
+                seen_messages = len(state["messages"])
+
+                if active_node == "planner" and last_node != "planner":
+                    plan = state.get("plan", [])
+                    if plan:
+                        print(f"📋 {Colors.CYAN}{Colors.BOLD}Planner:{Colors.RESET}")
+                        for i, step in enumerate(plan):
+                            print(f"   {i+1}. {step}")
+                        print()
+                    else:
+                        print(f"🧠 {Colors.DIM}Generating execution plan...{Colors.RESET}")
+
+                elif active_node == "executor":
+                    plan = state.get("plan", [])
+                    current_step = state.get("current_step", 0)
+                    step_idx = current_step - 1
+                    if 0 <= step_idx < len(plan):
+                        print(f"🛠️  {Colors.YELLOW}{Colors.BOLD}Step {step_idx + 1}/{len(plan)}:{Colors.RESET} {plan[step_idx]}")
+
+                    for msg in new_msgs:
+                        if hasattr(msg, "tool_calls") and msg.tool_calls:
+                            for tc in msg.tool_calls:
+                                args_str = ", ".join(f"{k}={v!r}" for k, v in tc.get("args", {}).items())
+                                print(f"   🔧 {Colors.CYAN}Tool:{Colors.RESET} `{tc['name']}({args_str})`")
+                        elif isinstance(msg, ToolMessage):
+                            out_snippet = msg.content.strip().replace("\n", " ")
+                            if len(out_snippet) > 120:
+                                out_snippet = out_snippet[:117] + "..."
+                            print(f"   📄 {Colors.DIM}Result: {out_snippet}{Colors.RESET}")
+
+                elif active_node == "critic" and last_node != "critic":
+                    last_msg = state["messages"][-1]
+                    content = last_msg.content if hasattr(last_msg, "content") else str(last_msg)
+                    try:
+                        parsed = json.loads(content)
+                        status = parsed.get("status", "PASS")
+                        reason = parsed.get("reason", "")
+                        if status == "PASS":
+                            print(f"✨ {Colors.GREEN}Critic:{Colors.RESET} Passed ({reason})")
+                        else:
+                            print(f"⚠️  {Colors.YELLOW}Critic:{Colors.RESET} Retry requested ({reason})")
+                    except Exception:
+                        if "PASS" in content.upper():
+                            print(f"✨ {Colors.GREEN}Critic:{Colors.RESET} Passed")
+
+                last_node = active_node
+
+            if last_state and last_state.get("messages"):
+                for m in reversed(last_state["messages"]):
+                    if isinstance(m, AIMessage) and m.content and not m.content.strip().startswith("{") and not m.content.strip().startswith("["):
+                        final_reply = m.content.strip()
+                        break
+                if not final_reply and last_state.get("last_result"):
+                    final_reply = last_state["last_result"]
+
+        except Exception as e:
+            print(f"\n{Colors.RED}Agent execution error: {e}{Colors.RESET}")
+            final_reply = f"I encountered an issue executing that command, sir: {str(e)}"
+
+        if not final_reply:
+            final_reply = "I have completed the task, sir."
+
+        print(f"\n{Colors.GREEN}{Colors.BOLD}Jarvis:{Colors.RESET} {final_reply}\n")
+        self.history.append(AIMessage(content=final_reply))
+
+        # Clean text for TTS
+        clean_text = final_reply.replace("`", "").replace("**", "").replace("##", "").replace("*", "").replace("- ", "")
+        return final_reply, clean_text
+
+    def _execute_gateway_turn(self, user_text: str) -> Tuple[str, str]:
+        """Sends user message to an external Medusa HTTP gateway."""
         self.history.append({"role": "user", "content": user_text})
         payload = {
             "model": self.model_name,
@@ -320,7 +428,7 @@ class MedusaVoiceClient:
                 with urllib.request.urlopen(req, timeout=120) as resp:
                     resp_data = json.loads(resp.read().decode("utf-8"))
                     full_reply = resp_data["choices"][0]["message"]["content"]
-                    print(f"\n{Colors.GREEN}{Colors.BOLD}Medusa:{Colors.RESET} {full_reply}")
+                    print(f"\n{Colors.GREEN}{Colors.BOLD}Jarvis:{Colors.RESET} {full_reply}")
             else:
                 with urllib.request.urlopen(req, timeout=120) as resp:
                     in_thought = False
@@ -346,7 +454,7 @@ class MedusaVoiceClient:
                                     continue
                                 if "</thought>" in content:
                                     in_thought = False
-                                    print(f"\n{Colors.GREEN}{Colors.BOLD}Medusa:{Colors.RESET} ", end="", flush=True)
+                                    print(f"\n{Colors.GREEN}{Colors.BOLD}Jarvis:{Colors.RESET} ", end="", flush=True)
                                     continue
 
                                 if in_thought:
@@ -373,9 +481,15 @@ class MedusaVoiceClient:
         if full_reply:
             self.history.append({"role": "assistant", "content": full_reply})
 
-        # Clean text for TTS
         clean_text = full_reply.replace("`", "").replace("**", "").replace("##", "").replace("*", "")
         return full_reply, clean_text
+
+    def send_chat_completion(self, user_text: str) -> Tuple[str, str]:
+        """Routes chat turn to embedded agent or external gateway."""
+        if self.gateway_url:
+            return self._execute_gateway_turn(user_text)
+        else:
+            return self._execute_embedded_turn(user_text)
 
     def synthesize_and_play(self, text: str, save_path: Optional[str] = None) -> bool:
         """Sends clean text to F5-TTS and plays back audio."""
@@ -411,7 +525,7 @@ class MedusaVoiceClient:
                 self.player.play(audio_bytes)
                 return True
         except urllib.error.URLError as e:
-            print(f"{Colors.YELLOW}Could not reach TTS server at {self.tts_url}: {e}{Colors.RESET}")
+            print(f"{Colors.YELLOW}Could not reach TTS server at {self.tts_url}: {e}\nTip: Start the TTS container with: docker compose up -d{Colors.RESET}")
             return False
         except Exception as e:
             print(f"{Colors.YELLOW}TTS synthesis error: {e}{Colors.RESET}")
@@ -453,7 +567,7 @@ class MedusaVoiceClient:
 
             print(f"\n{Colors.CYAN}{Colors.BOLD}You (voice):{Colors.RESET} {user_text}")
 
-        # Send to agent gateway
+        # Send to agent orchestrator
         full_reply, clean_text = self.send_chat_completion(user_text)
 
         # Synthesize audio response
@@ -467,11 +581,12 @@ class MedusaVoiceClient:
         print(f"\n{Colors.HEADER}{Colors.BOLD}======================================================{Colors.RESET}")
         print(f"{Colors.HEADER}{Colors.BOLD}          Medusa Voice Assistant (WSL Client)         {Colors.RESET}")
         print(f"{Colors.HEADER}{Colors.BOLD}======================================================{Colors.RESET}")
-        print(f"Gateway: {self.gateway_url}")
-        print(f"TTS:     {self.tts_url} (Voice: {self.voice})")
-        print(f"Pulse:   {os.environ.get('PULSE_SERVER', 'Default')}")
-        print(f"Mode:    {'Push-to-Talk [Enter to Start/Stop]' if not self.duration else f'Timed ({self.duration}s)'}")
-        print(f"Controls: Press Ctrl+C to exit at any time.\n")
+        print(f"Workspace: {os.getcwd()}")
+        print(f"LLM:       {self.llm_url} (Model: {self.model_name})")
+        print(f"TTS:       {self.tts_url} (Voice: {self.voice})")
+        print(f"Pulse:     {os.environ.get('PULSE_SERVER', 'Default')}")
+        print(f"Mode:      {'Push-to-Talk [Enter to Start/Stop]' if not self.duration else f'Timed ({self.duration}s)'}")
+        print(f"Controls:  Press Ctrl+C to exit at any time.\n")
 
         while True:
             try:
@@ -485,10 +600,11 @@ class MedusaVoiceClient:
 
 def main():
     parser = argparse.ArgumentParser(description="Medusa Voice Client (WSL)")
-    parser.add_argument("--gateway", default="http://localhost:9000/v1/chat/completions", help="Medusa Gateway URL (e.g. http://localhost:9000/v1/chat/completions or http://llm.coffee-dev.uk/v1/chat/completions)")
-    parser.add_argument("--tts", default="http://localhost:5000/v1/audio/speech", help="F5-TTS Server URL")
-    parser.add_argument("--model", default="qwen3.8-27b", help="LLM model name (e.g. qwen3.8-27b or agent-orchestrator)")
-    parser.add_argument("--voice", default="jarvis", help="TTS Voice name (e.g. jarvis)")
+    parser.add_argument("--gateway", default=None, help="Optional external Medusa HTTP gateway URL (e.g. http://localhost:9000/v1/chat/completions)")
+    parser.add_argument("--llm", default=DEFAULT_LLM_URL, help=f"Remote LLM API Base URL (default: {DEFAULT_LLM_URL})")
+    parser.add_argument("--tts", default=DEFAULT_TTS_URL, help=f"F5-TTS Server URL (default: {DEFAULT_TTS_URL})")
+    parser.add_argument("--model", default=DEFAULT_MODEL, help=f"LLM model name (default: {DEFAULT_MODEL})")
+    parser.add_argument("--voice", default=DEFAULT_VOICE, help="TTS Voice name (default: jarvis)")
     parser.add_argument("--speed", type=float, default=1.0, help="TTS Voice speed multiplier")
     parser.add_argument("--stt-model", default="base.en", help="Whisper model (tiny.en, base.en, small.en, medium.en)")
     parser.add_argument("--stt-device", default="auto", choices=["auto", "cpu", "cuda"], help="STT compute device")
@@ -503,6 +619,7 @@ def main():
 
     client = MedusaVoiceClient(
         gateway_url=args.gateway,
+        llm_url=args.llm,
         tts_url=args.tts,
         model_name=args.model,
         voice=args.voice,
@@ -526,3 +643,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
