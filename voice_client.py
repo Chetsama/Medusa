@@ -34,6 +34,8 @@ if "PULSE_SERVER" not in os.environ and os.path.exists("/mnt/wslg/PulseServer"):
 if "HF_HOME" not in os.environ:
     os.environ["HF_HOME"] = os.path.expanduser("~/.hf_cache")
 
+DEFAULT_USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+
 
 def preload_nvidia_libs():
     """Preloads pip-installed nvidia CUDA libraries into global namespace for CTranslate2."""
@@ -76,7 +78,7 @@ class AudioRecorder:
     def record_push_to_talk(self) -> Optional[str]:
         """Records audio starting on Enter and stopping on next Enter."""
         temp_wav = tempfile.NamedTemporaryFile(suffix=".wav", delete=False).name
-
+        
         print(f"\n{Colors.CYAN}{Colors.BOLD}Press [ENTER] to start recording...{Colors.RESET}", end="", flush=True)
         try:
             input()
@@ -211,7 +213,7 @@ class SpeechToText:
             from faster_whisper import WhisperModel
 
             want_cuda = (self.device == "cuda") or (self.device == "auto" and ctranslate2.get_cuda_device_count() > 0)
-
+            
             if want_cuda:
                 try:
                     self.model = WhisperModel(self.model_size, device="cuda", compute_type="float16", download_root=download_root)
@@ -265,8 +267,9 @@ class MedusaVoiceClient:
 
     def __init__(
         self,
-        gateway_url: str = "http://llm.coffee-dev.uk/v1/chat/completions",
+        gateway_url: str = "http://localhost:9000/v1/chat/completions",
         tts_url: str = "http://localhost:5000/v1/audio/speech",
+        model_name: str = "qwen3.8-27b",
         voice: str = "jarvis",
         speed: float = 1.0,
         stt_model: str = "base.en",
@@ -278,6 +281,7 @@ class MedusaVoiceClient:
     ):
         self.gateway_url = gateway_url
         self.tts_url = tts_url
+        self.model_name = model_name
         self.voice = voice
         self.speed = speed
         self.stream = stream
@@ -294,7 +298,7 @@ class MedusaVoiceClient:
         """Sends user message to Medusa gateway and receives reasoning + final reply."""
         self.history.append({"role": "user", "content": user_text})
         payload = {
-            "model": "agent-orchestrator",
+            "model": self.model_name,
             "messages": self.history,
             "stream": self.stream
         }
@@ -305,7 +309,11 @@ class MedusaVoiceClient:
             req = urllib.request.Request(
                 self.gateway_url,
                 data=req_data,
-                headers={"Content-Type": "application/json"}
+                headers={
+                    "Content-Type": "application/json",
+                    "User-Agent": DEFAULT_USER_AGENT,
+                    "Authorization": "Bearer none"
+                }
             )
 
             if not self.stream:
@@ -388,7 +396,10 @@ class MedusaVoiceClient:
             req = urllib.request.Request(
                 self.tts_url,
                 data=req_data,
-                headers={"Content-Type": "application/json"}
+                headers={
+                    "Content-Type": "application/json",
+                    "User-Agent": DEFAULT_USER_AGENT
+                }
             )
             with urllib.request.urlopen(req, timeout=60) as resp:
                 audio_bytes = resp.read()
@@ -396,7 +407,7 @@ class MedusaVoiceClient:
                     with open(save_path, "wb") as f:
                         f.write(audio_bytes)
                     print(f"{Colors.DIM}Audio saved to: {save_path}{Colors.RESET}")
-
+                
                 self.player.play(audio_bytes)
                 return True
         except urllib.error.URLError as e:
@@ -474,8 +485,9 @@ class MedusaVoiceClient:
 
 def main():
     parser = argparse.ArgumentParser(description="Medusa Voice Client (WSL)")
-    parser.add_argument("--gateway", default="http://llm.coffee-dev.uk/v1/chat/completions", help="Medusa Gateway URL")
+    parser.add_argument("--gateway", default="http://localhost:9000/v1/chat/completions", help="Medusa Gateway URL (e.g. http://localhost:9000/v1/chat/completions or http://llm.coffee-dev.uk/v1/chat/completions)")
     parser.add_argument("--tts", default="http://localhost:5000/v1/audio/speech", help="F5-TTS Server URL")
+    parser.add_argument("--model", default="qwen3.8-27b", help="LLM model name (e.g. qwen3.8-27b or agent-orchestrator)")
     parser.add_argument("--voice", default="jarvis", help="TTS Voice name (e.g. jarvis)")
     parser.add_argument("--speed", type=float, default=1.0, help="TTS Voice speed multiplier")
     parser.add_argument("--stt-model", default="base.en", help="Whisper model (tiny.en, base.en, small.en, medium.en)")
@@ -492,6 +504,7 @@ def main():
     client = MedusaVoiceClient(
         gateway_url=args.gateway,
         tts_url=args.tts,
+        model_name=args.model,
         voice=args.voice,
         speed=args.speed,
         stt_model=args.stt_model,
