@@ -1,15 +1,14 @@
 MAX_MESSAGES = 25
-MAX_TOOL_TURNS = 10
-MAX_RETRIES = 2
+MAX_TOOL_TURNS = 6
 
-from typing import List, Literal, Dict, Any
-from typing_extensions import TypedDict, Annotated
-import operator
+import os
 import json
 import time
+from typing import List, Literal, Dict, Any, Optional
+from typing_extensions import TypedDict
 
 from langchain_openai import ChatOpenAI
-from langchain.tools import tool, BaseTool
+from langchain.tools import BaseTool
 from langchain.messages import (
     AnyMessage,
     SystemMessage,
@@ -26,148 +25,92 @@ from tools.registry import load_all_tools, get_tools_map
 
 class AgentState(TypedDict):
     messages: List[AnyMessage]
-    plan: List[str]
-    current_step: int
-    last_result: str
-    retries: int
     active_node: str
+    tool_turns: int
+    last_result: str
 
 # =========================
 # 2. AGENT CLASS
 # =========================
 
 class OrchestratorAgent:
-    def __init__(self, model_name: str = "gemma4", api_base: str = "http://localhost:9000/v1"):
+    def __init__(
+        self,
+        model_name: str = "qwen3.8-27b",
+        api_base: str = "http://llm.coffee-dev.uk/v1"
+    ):
+        self.model_name = model_name
+        self.api_base = api_base.rstrip("/")
+        
         self.model = ChatOpenAI(
-            openai_api_base=api_base,
+            openai_api_base=self.api_base,
             openai_api_key="none",
-            model_name=model_name,
+            model_name=self.model_name,
+            temperature=0.2,
         )
 
         # Load external tools and merge with core tools
-        external_tools = load_all_tools()
-        self.tools = external_tools
+        self.tools = load_all_tools()
         self.tools_by_name = get_tools_map(self.tools)
-        self.executor_model = self.model.bind_tools(self.tools)
+        self.model_with_tools = self.model.bind_tools(self.tools)
 
         self.graph = self._build_graph()
 
-
-
-    def _parse_json(self, text: str) -> Any:
-        """Robustly extracts and parses JSON from a string that might contain other text."""
-        try:
-            # Try direct parse first
-            return json.loads(text)
-        except json.JSONDecodeError:
-            # Try finding JSON block
-            import re
-            match = re.search(r"(\{.*\}|\[.*\])", text, re.DOTALL)
-            if match:
-                try:
-                    return json.loads(match.group(1))
-                except:
-                    pass
-        return None
-
-    def _planner_node(self, state: AgentState):
-        fix_feedback = ""
-        if state.get("messages"):
-            last_msg = state["messages"][-1]
-            if isinstance(last_msg, AIMessage):
-                parsed = self._parse_json(last_msg.content)
-                if parsed and isinstance(parsed, dict):
-                    fix_feedback = parsed.get("fix", "")
-
-        prompt = SystemMessage(
+    def _get_system_prompt(self) -> SystemMessage:
+        cwd = os.getcwd()
+        return SystemMessage(
             content=(
-                "Break the user request into a clear step-by-step plan.\n"
-                "Return ONLY a JSON array of strings.\n"
-                f"If provided, incorporate this feedback: {fix_feedback}"
+                f"You are Jarvis (voiced by Paul Bettany), a courteous, witty, and highly capable AI assistant operating directly in the user's workspace.\n"
+                f"Current Working Directory: {cwd}\n\n"
+                "Guidelines:\n"
+                "- You have access to local tools (inspecting files, running git commands, and running shell commands).\n"
+                "- When the user asks about the workspace, files, git, or system state, call the relevant tools directly and efficiently (usually 1-2 tool calls suffice).\n"
+                "- For casual conversation, greetings, or questions that do not require environment inspection, respond immediately without invoking tools.\n"
+                "- When you have gathered the required information from tool calls, synthesize the answer directly and politely as Jarvis.\n"
+                "- Avoid raw markdown tables, raw JSON, or massive code blocks, as your output is spoken aloud to the user via Text-to-Speech."
             )
         )
 
-        response = self.model.invoke([prompt] + state["messages"])
+    def _agent_node(self, state: AgentState) -> Dict[str, Any]:
+        """Core reasoning and tool-calling node."""
+        sys_prompt = self._get_system_prompt()
+        raw_messages = state.get("messages", [])
+        tool_turns = state.get("tool_turns", 0)
+        
+        # Filter out existing SystemMessages so our fresh system prompt is at the top
+        filtered_msgs = [m for m in raw_messages if not isinstance(m, SystemMessage)]
+        trimmed_msgs = filtered_msgs[-MAX_MESSAGES:]
+        call_messages = [sys_prompt] + trimmed_msgs
 
-        steps = self._parse_json(response.content)
-        if not isinstance(steps, list):
-            steps = [response.content]  # fallback
+        # If we reached the tool turn limit, force final text generation without tools
+        if tool_turns >= MAX_TOOL_TURNS:
+            call_messages.append(SystemMessage(content="You have completed your tool checks. Please provide your final spoken response to the user as Jarvis now."))
+            response = self.model.invoke(call_messages)
+        else:
+            response = self.model_with_tools.invoke(call_messages)
+
+        if getattr(response, "tool_calls", None) and len(response.tool_calls) > 0:
+            tool_turns += 1
+
+        updated_messages = raw_messages + [response]
 
         return {
-            "plan": steps,
-            "current_step": 0,
-            "messages": state["messages"] + [response],
-            "active_node": "planner"
+            "messages": updated_messages,
+            "active_node": "agent",
+            "tool_turns": tool_turns,
+            "last_result": response.content or "",
         }
 
-    def _executor_node(self, state: AgentState):
-        if state["current_step"] >= len(state["plan"]):
-            return {"active_node": "executor"}
+    def _tools_node(self, state: AgentState) -> Dict[str, Any]:
+        """Executes tool calls locally and returns ToolMessages."""
+        messages = state.get("messages", [])
+        last_msg = messages[-1] if messages else None
 
-        step = state["plan"][state["current_step"]]
-
-        # Filter out existing system messages to avoid duplication or confusion for some models
-        filtered_messages = [m for m in state["messages"] if not isinstance(m, SystemMessage)]
-
-        prompt = SystemMessage(
-            content=(
-                f"You are the executor. Your current task is:\n{step}\n\n"
-                "Use tools if needed.\n"
-                "Use RELATIVE paths only.\n"
-                "When complete, summarize what you did."
-            )
-        )
-
-        current_messages = [prompt] + filtered_messages
-        new_messages = []
-
-        # Track progress to prevent infinite loops
-        last_progress = 0
-        progress_counter = 0
-        task_complete = False
-
-        # Track execution time for timeout handling
-        start_time = time.time()
-        tool_timeout = 30  # 30 seconds per tool execution
-
-        for i in range(MAX_TOOL_TURNS):
-            # Check for timeout
-            if time.time() - start_time > tool_timeout:
-                raise RuntimeError(f"Tool execution timed out after {tool_timeout} seconds for task: {step}")
-
-            response = self.executor_model.invoke(current_messages)
-            new_messages.append(response)
-            current_messages.append(response)
-
-            # Check if we're making progress
-            if len(new_messages) > last_progress:
-                last_progress = len(new_messages)
-                progress_counter = 0
-            else:
-                progress_counter += 1
-
-            # Detect if we're stuck in a loop
-            if progress_counter > 3:  # If no progress for 3 iterations, break
-                print(f"Warning: No progress detected for task '{step}' - breaking loop")
-                break
-
-            # Check if we have a final result (no tool calls) - this indicates completion
-            if not response.tool_calls:
-                # Enhanced completion detection
-                if isinstance(response.content, str) and len(response.content.strip()) > 0:
-                    # This is likely a final completion, not a tool call
-                    task_complete = True
-                    break
-
-            # If we are here, we have tool calls.
-            # Check if this is the last allowed turn.
-            if i == MAX_TOOL_TURNS - 1:
-                raise RuntimeError(f"Max tool iterations ({MAX_TOOL_TURNS}) reached without completion for task: {step}")
-
-            # Process tool calls
-            for call in response.tool_calls:
+        tool_messages = []
+        if last_msg and getattr(last_msg, "tool_calls", None):
+            for call in last_msg.tool_calls:
                 tool_name = call["name"]
-                tool_args = call["args"]
+                tool_args = call.get("args", {})
 
                 if tool_name in self.tools_by_name:
                     try:
@@ -175,120 +118,59 @@ class OrchestratorAgent:
                     except Exception as e:
                         result = f"Tool error: {str(e)}"
                 else:
-                    result = f"Error: Tool {tool_name} not found"
+                    result = f"Error: Tool '{tool_name}' not found."
 
                 msg = ToolMessage(content=str(result), tool_call_id=call["id"])
-                new_messages.append(msg)
-                current_messages.append(msg)
-
-                # Update progress on successful tool execution
-                if len(new_messages) > last_progress:
-                    last_progress = len(new_messages)
-                    progress_counter = 0
-
-        # extract result
-        last_ai_content = ""
-        for m in reversed(new_messages):
-            if isinstance(m, AIMessage) and m.content:
-                last_ai_content = m.content
-                break
-
-        # prune messages
-        updated_messages = (state["messages"] + new_messages)[-MAX_MESSAGES:]
+                tool_messages.append(msg)
 
         return {
-            "messages": updated_messages,
-            "last_result": last_ai_content,
-            "current_step": state["current_step"] + 1,
-            "active_node": "executor"
+            "messages": messages + tool_messages,
+            "active_node": "tools",
+            "tool_turns": state.get("tool_turns", 0),
+            "last_result": state.get("last_result", "")
         }
 
-    def _critic_node(self, state: AgentState):
-        prompt = SystemMessage(
-            content=(
-                "Evaluate the LAST step result.\n"
-                "Return JSON:\n"
-                "{\n"
-                '  "status": "PASS" | "RETRY",\n'
-                '  "reason": "...",\n'
-                '  "fix": "what should change"\n'
-                "}"
-            )
-        )
+    def _should_continue(self, state: AgentState) -> Literal["tools", "end"]:
+        """Routes between tools execution or completion."""
+        messages = state.get("messages", [])
+        if not messages:
+            return "end"
 
-        response = self.model.invoke([prompt] + state["messages"])
+        last_msg = messages[-1]
+        tool_turns = state.get("tool_turns", 0)
 
-        retries = state.get("retries", 0)
+        # If model generated tool calls and hasn't exceeded max turns
+        if getattr(last_msg, "tool_calls", None) and len(last_msg.tool_calls) > 0:
+            if tool_turns <= MAX_TOOL_TURNS:
+                return "tools"
 
-        parsed = self._parse_json(response.content)
-        is_retry = not parsed or parsed.get("status") != "PASS"
-
-        if is_retry:
-            retries += 1
-
-        return {
-            "messages": state["messages"] + [response],
-            "retries": retries,
-            "current_step": state["current_step"] if not is_retry else 0,
-            "active_node": "critic"
-        }
-
-    def _summarizer_node(self, state: AgentState):
-        prompt = SystemMessage(
-            content=(
-                "You are the final summarizer. Based on the work done, provide a natural language response to the user's original request. "
-                "Be concise and helpful. Do NOT return JSON."
-            )
-        )
-        response = self.model.invoke([prompt] + state["messages"])
-        return {
-            "messages": state["messages"] + [response],
-            "active_node": "summarizer"
-        }
-
-    def _route_after_executor(self, state: AgentState) -> Literal["critic"]:
-        return "critic"
-
-    def _route_after_critic(self, state: AgentState) -> Literal["executor", "planner", "summarizer"]:
-        last_msg = state["messages"][-1].content
-        parsed = self._parse_json(last_msg)
-        status = parsed.get("status", "RETRY") if parsed else "RETRY"
-
-        if status == "PASS":
-            if state["current_step"] >= len(state["plan"]):
-                return "summarizer"
-            return "executor"
-
-        if state["retries"] >= MAX_RETRIES:
-            return "summarizer" # Fallback to summary even if failed
-
-        return "planner"
-        # There was a bug here previously where model had decided to return an executor instead.
-        # This meant that it was re-running the same plan with polluted message history without addressing the critics feedback
-        # Instead we return planner and go round again
-
+        return "end"
 
     def _build_graph(self):
         builder = StateGraph(AgentState)
-        builder.add_node("planner", self._planner_node)
-        builder.add_node("executor", self._executor_node)
-        builder.add_node("critic", self._critic_node)
-        builder.add_node("summarizer", self._summarizer_node)
+        builder.add_node("agent", self._agent_node)
+        builder.add_node("tools", self._tools_node)
 
-        builder.add_edge(START, "planner")
-        builder.add_edge("planner", "executor")
-        builder.add_conditional_edges("executor", self._route_after_executor, ["critic"])
-        builder.add_conditional_edges("critic", self._route_after_critic, {
-            "executor": "executor",
-            "planner": "planner",
-            "summarizer": "summarizer"
+        builder.add_edge(START, "agent")
+        builder.add_conditional_edges("agent", self._should_continue, {
+            "tools": "tools",
+            "end": END
         })
-        builder.add_edge("summarizer", END)
+        builder.add_edge("tools", "agent")
 
         return builder.compile()
+
+    def invoke(self, input_dict: Dict[str, Any]):
+        return self.graph.invoke(input_dict)
 
     async def ainvoke(self, input_dict: Dict[str, Any]):
         return await self.graph.ainvoke(input_dict)
 
+    def stream(self, input_dict: Dict[str, Any]):
+        return self.graph.stream(input_dict, stream_mode="values")
+
     def astream(self, input_dict: Dict[str, Any]):
         return self.graph.astream(input_dict, stream_mode="values")
+
+
+

@@ -1,0 +1,10 @@
+# Voice Client Dependencies
+requests>=2.31.0
+numpy>=1.24.0
+soundfile>=0.12.1
+
+# Speech-to-Text (Fast local inference)
+faster-whisper>=1.0.0
+
+# Audio device I/O (Optional alternative to native WSL PulseAudio parecord/paplay)
+sounddevice>=0.4.6
