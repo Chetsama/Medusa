@@ -329,60 +329,34 @@ class MedusaVoiceClient:
         last_state = None
 
         try:
-            for state in self.agent.stream({"messages": self.history, "retries": 0, "active_node": "init"}):
+            for state in self.agent.stream({"messages": self.history, "tool_turns": 0, "active_node": "init"}):
                 last_state = state
                 active_node = state.get("active_node", "init")
                 new_msgs = state["messages"][seen_messages:]
                 seen_messages = len(state["messages"])
 
-                if active_node == "planner" and last_node != "planner":
-                    plan = state.get("plan", [])
-                    if plan:
-                        print(f"📋 {Colors.CYAN}{Colors.BOLD}Planner:{Colors.RESET}")
-                        for i, step in enumerate(plan):
-                            print(f"   {i+1}. {step}")
-                        print()
-                    else:
-                        print(f"🧠 {Colors.DIM}Generating execution plan...{Colors.RESET}")
-
-                elif active_node == "executor":
-                    plan = state.get("plan", [])
-                    current_step = state.get("current_step", 0)
-                    step_idx = current_step - 1
-                    if 0 <= step_idx < len(plan):
-                        print(f"🛠️  {Colors.YELLOW}{Colors.BOLD}Step {step_idx + 1}/{len(plan)}:{Colors.RESET} {plan[step_idx]}")
-
+                if active_node == "agent":
                     for msg in new_msgs:
                         if hasattr(msg, "tool_calls") and msg.tool_calls:
                             for tc in msg.tool_calls:
                                 args_str = ", ".join(f"{k}={v!r}" for k, v in tc.get("args", {}).items())
-                                print(f"   🔧 {Colors.CYAN}Tool:{Colors.RESET} `{tc['name']}({args_str})`")
-                        elif isinstance(msg, ToolMessage):
+                                print(f"🛠️  {Colors.YELLOW}{Colors.BOLD}Tool Call:{Colors.RESET} {Colors.CYAN}`{tc['name']}({args_str})`{Colors.RESET}")
+                elif active_node == "tools":
+                    for msg in new_msgs:
+                        if isinstance(msg, ToolMessage):
                             out_snippet = msg.content.strip().replace("\n", " ")
                             if len(out_snippet) > 120:
                                 out_snippet = out_snippet[:117] + "..."
                             print(f"   📄 {Colors.DIM}Result: {out_snippet}{Colors.RESET}")
 
-                elif active_node == "critic" and last_node != "critic":
-                    last_msg = state["messages"][-1]
-                    content = last_msg.content if hasattr(last_msg, "content") else str(last_msg)
-                    try:
-                        parsed = json.loads(content)
-                        status = parsed.get("status", "PASS")
-                        reason = parsed.get("reason", "")
-                        if status == "PASS":
-                            print(f"✨ {Colors.GREEN}Critic:{Colors.RESET} Passed ({reason})")
-                        else:
-                            print(f"⚠️  {Colors.YELLOW}Critic:{Colors.RESET} Retry requested ({reason})")
-                    except Exception:
-                        if "PASS" in content.upper():
-                            print(f"✨ {Colors.GREEN}Critic:{Colors.RESET} Passed")
-
                 last_node = active_node
 
             if last_state and last_state.get("messages"):
                 for m in reversed(last_state["messages"]):
-                    if isinstance(m, AIMessage) and m.content and not m.content.strip().startswith("{") and not m.content.strip().startswith("["):
+                    if isinstance(m, AIMessage) and m.content and not getattr(m, "tool_calls", None):
+                        final_reply = m.content.strip()
+                        break
+                    elif isinstance(m, AIMessage) and m.content and not m.content.strip().startswith("{") and not m.content.strip().startswith("["):
                         final_reply = m.content.strip()
                         break
                 if not final_reply and last_state.get("last_result"):
